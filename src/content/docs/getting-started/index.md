@@ -92,16 +92,46 @@ plus the macro are on by default; everything else is a Cargo feature.
 
 ## Where it earns its keep
 
-Devices that run **several interdependent services** and have to **manage
-power and updates**: battery field sensors that wake, publish and sleep;
-connected gateways with strict start order and worker pools; climate and
-building controllers that must degrade gracefully; robotics stacks that mix a
-preemptive control tier with cooperative telemetry; OTA-first products where
-an update has to drain live services and roll back on failure.
+When the hard part stops being each `async fn` and becomes the wiring
+between them, the graph earns its keep. A few shapes recur across very
+different products:
 
-A single-task blinky does not need it. Two or three cooperating tasks with
-manual sequencing can go either way. Past that, the declaration usually pays
-for itself quickly.
+- **Bring up the world in a known order.** A radio before its
+  subscribers, an OTA confirm before the next flash attempt, a network
+  stack before any HTTP server that uses it. `deps:` makes that order
+  the same string the compiler checks.
+- **Have a reader start its provider.** A `Backed` signal waits for its
+  producer on the first `open`, so the bring-up wave can wire a
+  consumer declared before its provider with no `deps:` edge. The wait
+  re-checks on every retry, so a producer that runs but stops
+  reporting ready does not pin the reader; a user-implemented
+  `Gated::ensure` can layer any other policy on top, including a wedge
+  check.
+- **Wake briefly, publish, sleep.** One or more drivers park in `Pause`
+  holding a resource, so the next wake is a millisecond resume rather
+  than a cold reinit.
+- **Answer "who is affected if X cycles" without reverse-engineering.**
+  The dataflow record keeps writers and readers next to deps, so the
+  graph answers the question directly and tooling stays accurate as
+  nodes come and go.
+- **Take a provider down without dropping a held handle.** `lease()`
+  counts every holder of a resource and `drain()` waits for them, so a
+  `Pause`'d driver never frees a `Stack` a serving task is still
+  reading.
+- **Heartbeat a task without touching the task.** A `writes: [X
+  observed beat]` entry turns a normal write into the node's heartbeat,
+  so the producer body stays oblivious to liveness.
+- **Stay on, absorb bursts.** An elastic pool grows workers when load
+  spikes and drains them during quiet times, bounded by the member
+  budget the graph declares.
+- **Take an update without dropping live requests.** When a flash needs
+  the network down, dependents drain through their gate sequence; a
+  failed update leaves the previous image running with consumers still
+  fed.
+
+A single-task blinky does not need it. Two or three cooperating tasks
+with manual sequencing can go either way. Past that, the declaration
+usually pays for itself.
 
 ## Before you continue
 
