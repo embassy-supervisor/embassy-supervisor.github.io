@@ -7,13 +7,13 @@ description: supervisor-mermaid draws your graph and supervisor-lint checks its 
 
 # Diagram and lint tools
 
-The `supervisor-tools` crate ships two host tools that read your graph
+The `embassy-supervisor-tools` crate ships two host tools that read your graph
 declaration straight out of the Rust source: the same parser, the same
 scanner the `#[dataflow]` attribute uses, so the output is the build's view
 by construction.
 
 ```console
-cargo install supervisor-tools
+cargo install embassy-supervisor-tools
 ```
 
 ## supervisor-mermaid

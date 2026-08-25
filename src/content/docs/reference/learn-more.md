@@ -60,3 +60,6 @@ foundations. The pages below are the ones worth bookmarking.
   lifecycle matrix.
 - [embassy-supervisor-observe](https://crates.io/crates/embassy-supervisor-observe)
   - the facade a signal library implements in one line.
+- [embassy-supervisor-tools](https://crates.io/crates/embassy-supervisor-tools)
+  - `supervisor-mermaid` and `supervisor-lint`, installable with
+  `cargo install embassy-supervisor-tools`.

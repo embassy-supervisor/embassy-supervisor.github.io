@@ -57,7 +57,7 @@ embassy-supervisor = { version = "0.5", features = [
 - [`embassy-supervisor-observe`](https://crates.io/crates/embassy-supervisor-observe):
   the leaf facade a signal library implements (`Observable`, `Counted`)
   without depending on the supervisor.
-- [`supervisor-tools`](https://github.com/cedrivard/embassy-supervisor/tree/main/supervisor-tools):
-  `supervisor-mermaid` and `supervisor-lint` host tools.
+- [`embassy-supervisor-tools`](https://crates.io/crates/embassy-supervisor-tools):
+  the `supervisor-mermaid` and `supervisor-lint` host tools.
 - [`embassy-supervisor-macros`](https://crates.io/crates/embassy-supervisor-macros):
   the proc macros, pinned by exact version automatically.
