@@ -1,0 +1,26 @@
+---
+import DefaultHead from '@astrojs/starlight/components/Head.astro';
+import ThemeBootstrap from './ThemeBootstrap.astro';
+---
+
+<DefaultHead {...Astro.props} />
+<ThemeBootstrap />
+
+<script>
+  // Side panel modes: tiny, always needed on docs pages. Import first so the
+  // module is in the bundle.
+  import '../scripts/panels';
+
+  // Boot the diagram renderer only on pages that actually carry one.
+  const hasGraph = () =>
+    document.querySelector(
+      'pre[data-language="mermaid"], pre > code.language-mermaid',
+    ) !== null;
+
+  const boot = () => {
+    if (hasGraph()) import('../scripts/mermaid');
+  };
+
+  document.addEventListener('astro:page-load', boot);
+  boot();
+</script>

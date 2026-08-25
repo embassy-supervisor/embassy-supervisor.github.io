@@ -1,0 +1,24 @@
+---
+// Sets the color scheme on <html> before first paint, matching Starlight's
+// stored preference or the system default, so the landing page's hero
+// diagram renders in the visitor's variant immediately.
+---
+
+<script is:inline>
+  (() => {
+    let theme = localStorage.getItem('starlight-theme');
+    if (theme !== 'light' && theme !== 'dark') {
+      theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.documentElement.dataset.theme = theme;
+
+    // Panel modes must land before first paint or each page load flashes
+    // the rails open and then animates them away.
+    try {
+      const s = JSON.parse(localStorage.getItem('sup-panels') || '{}');
+      const modes = ['visible', 'hover', 'hidden'];
+      if (modes.includes(s.left)) document.documentElement.dataset.panelLeft = s.left;
+      if (modes.includes(s.right)) document.documentElement.dataset.panelRight = s.right;
+    } catch {}
+  })();
+</script>

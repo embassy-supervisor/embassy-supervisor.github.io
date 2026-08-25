@@ -1,0 +1,426 @@
+---
+import { Image } from 'astro:assets';
+import ThemeBootstrap from '../components/ThemeBootstrap.astro';
+import logo from '../assets/logo.svg';
+import '../styles/theme.css';
+
+const base = import.meta.env.BASE_URL;
+// Social cards need absolute URLs; resolve against the configured site.
+const ogImage = new URL(`${base}og.png`, Astro.site).href;
+const ogUrl = new URL(base, Astro.site).href;
+const rustSource = `executor HIGH;
+executor CORE1;
+
+node WATCHDOG = Terminate, task: crate::watchdog::watchdog_task,
+    resources: [WD_DEV: embassy_rp::watchdog::Watchdog];
+
+node HEARTBEAT = Pause, executor: HIGH,
+    task: crate::heartbeat::heartbeat_task,
+    beat_timeout: 15000, discover,
+    resources: [LED: embassy_rp::gpio::Output<'static>];
+
+node NET = Terminate, task: crate::net::net_task,
+    dataflow: [crate::net::publish_stack],
+    provides: [NET_STACK],
+    resources: [USB_DEV: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>];
+
+node OTA = Terminate, deps: [NET ready], task: crate::ota::ota_task,
+    dataflow: [crate::net::lease_stack],
+    resources: [FLASH_DEV: embassy_rp::Peri<'static, embassy_rp::peripherals::FLASH>],
+    disabled;
+
+node BENCH = Terminate, deps: [HEARTBEAT ready bound], executor: CORE1,
+    task: crate::bench::bench_task, exit: u32, disabled;
+
+node OTA_CONFIRM = Terminate, deps: [HTTP, NET ready], task: crate::ota_confirm,
+    dataflow: [crate::net::stack_ready];
+
+pool HTTP = [Terminate, OnDemand], deps: [NET ready],
+    task: crate::http::http_task,
+    resources: [HTTP_STATS: crate::http::WorkerStats,
+                NET_STACK: shared local embassy_net::Stack<'static>],
+    dataflow: [crate::heartbeat::set_period_ms],
+`;
+
+// Build-time syntax tokenizer. Order matters: longer/more-specific patterns
+// win at each position, so lifetimes and DSL keywords catch before the
+// generic identifier rules. Produces HTML with class spans; no runtime JS.
+const TOK_RE = new RegExp(
+  [
+    "'(?:static|\\w+)",
+    "\\b\\d+\\b",
+    "\\bcrate\\b",
+    "\\bu(?:8|16|32|64|128|size)\\b",
+    "\\b(?:node|pool|executor|Terminate|Pause|OnDemand|task|resources|deps|dataflow|discover|disabled|provides|state|slot_timeout|beat_timeout|exit|ready|bound|shared|local|zeroed|min|max|policy)\\b",
+    "\\b(?:[A-Za-z_][A-Za-z0-9_]*::)+[a-z_][A-Za-z0-9_]*\\b",
+    "\\b(?:[A-Za-z_][A-Za-z0-9_]*::)+[A-Z][A-Za-z0-9_]*(?:<[^>]*>)?",
+    "\\b[a-z_][a-z0-9_]*(?:::[A-Za-z][A-Za-z0-9_]*)+",
+    "\\b[A-Z][A-Z0-9_]*\\b",
+  ]
+    .map((p) => `(${p})`)
+    .join('|'),
+  'g'
+);
+const TOK_CLASSES = [
+  'tok-life',
+  'tok-num',
+  'tok-kw',
+  'tok-prim',
+  'tok-key',
+  'tok-fn',
+  'tok-type',
+  'tok-mod',
+  'tok-const',
+];
+function highlight(src) {
+  const esc = (s) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let out = '';
+  let last = 0;
+  TOK_RE.lastIndex = 0;
+  let m;
+  while ((m = TOK_RE.exec(src)) !== null) {
+    if (m.index > last) out += esc(src.slice(last, m.index));
+    const idx = m.slice(1).findIndex((g) => g != null);
+    out += `<span class="${TOK_CLASSES[idx]}">${esc(m[0])}</span>`;
+    last = m.index + m[0].length;
+    if (m[0].length === 0) TOK_RE.lastIndex++;
+  }
+  if (last < src.length) out += esc(src.slice(last));
+  return out;
+}
+
+
+// Split at the OTA boundary: column A is the foundational providers
+// (executors + WATCHDOG + HEARTBEAT + NET), column B the dependents and
+// the pool. The split drops the leading newline on the second half.
+const splitAt = rustSource.indexOf('\nnode OTA = ');
+const rustSourceA = rustSource.slice(0, splitAt);
+const rustSourceB = rustSource.slice(splitAt + 1);
+const highlightedA = highlight(rustSourceA);
+const highlightedB = highlight(rustSourceB);
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <ThemeBootstrap />
+    <meta
+      name="description"
+      content="Run-time supervision for bare-metal async Rust: ordered bring-up, gated spawning, runtime control, declared dataflow and tracing for embassy task graphs."
+    />
+    <title>embassy-supervisor</title>
+    <meta property="og:title" content="embassy-supervisor" />
+    <meta
+      property="og:description"
+      content="Run-time supervision for bare-metal async Rust firmware."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={ogUrl} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="embassy-supervisor: run-time supervision for bare-metal async Rust"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div class="home">
+      <a class="home-skip" href="#main">Skip to content</a>
+      <nav class="home-nav">
+        <a class="brand" href={`${base}`}>
+          <Image
+            src={logo}
+            alt="embassy-supervisor mark"
+            width={28}
+            height={28}
+          />
+          embassy-supervisor
+        </a>
+        <span class="spacer"></span>
+        <a class="docs-link" href={`${base}getting-started/`}
+          >Read the docs →</a
+        >
+      </nav>
+
+      <main id="main">
+        <section class="home-hero">
+          <div>
+            <p class="home-kicker">Run-time supervision for async Rust firmware</p>
+            <h1>The <em>graph</em> wires static and runtime coupling to fit any design.</h1>
+            <p class="home-lede">
+              Async firmware grows past a handful of tasks and the hard
+              part stops being each <code>async fn</code> and starts being
+              the connections between them. <code class="home-lede-crate">embassy-supervisor</code> takes the
+              graph as data and resolves those connections two ways:
+              <code>deps:</code> order the static topology at compile time,
+              <code>dataflow:</code> wires readers and writers at runtime.
+              Combine them to fit the design.
+            </p>
+            <div class="home-ctas">
+              <a class="primary" href={`${base}getting-started/`}>Get started</a>
+              <a
+                class="ghost"
+                href="https://github.com/cedrivard/embassy-supervisor"
+                >GitHub</a
+              >
+            </div>
+          </div>
+
+          <div class="home-hero-graph">
+            <pre data-language="mermaid"><code>---
+config:
+  layout: elk
+---
+flowchart TD
+  accDescr: Runtime view of the demo firmware's supervised graph, with signals and resources
+  n_NET["NET&lt;br/&gt;Terminate · task"]:::task
+  n_HTTP[["HTTP&lt;br/&gt;pool ×2 · task · HTTP_FLOOR..HTTP_CEIL"]]:::pool
+  n_WATCHDOG["WATCHDOG&lt;br/&gt;Terminate · task"]:::task
+  n_HEARTBEAT["HEARTBEAT&lt;br/&gt;Pause · task · @HIGH · beat 15000"]:::paused
+  n_OTA["OTA&lt;br/&gt;Terminate · task"]:::disabled
+  n_BENCH["BENCH&lt;br/&gt;Terminate · task · @CORE1"]:::disabled
+  n_OTA_CONFIRM["OTA_CONFIRM&lt;br/&gt;Terminate · task"]:::task
+
+  n_NET -. "spawn · ready" .-> n_HTTP
+  n_NET -. "spawn · ready" .-> n_OTA
+  n_HEARTBEAT -. "spawn · ready bound" .-> n_BENCH
+  n_HTTP -. "spawn" .-> n_OTA_CONFIRM
+  n_NET -. "spawn · ready" .-> n_OTA_CONFIRM
+
+  s_crate__net__STACK[/"crate::net::STACK"/]:::signal
+  s_heartbeat__PERIOD_MS[/"heartbeat::PERIOD_MS"/]:::signal
+  n_NET -- "discovered" --> s_crate__net__STACK
+  n_HTTP -- "discovered" --> s_heartbeat__PERIOD_MS
+  s_crate__net__STACK -- "discovered" --> n_OTA
+  s_crate__net__STACK -- "gated" --> n_OTA_CONFIRM
+  s_heartbeat__PERIOD_MS -- "discovered" --> n_HEARTBEAT
+
+  r_USB_DEV@&#123; shape: notch-rect, label: "USB_DEV" &#125;
+  r_USB_DEV:::resource
+  r_HTTP_STATS@&#123; shape: notch-rect, label: "HTTP_STATS" &#125;
+  r_HTTP_STATS:::resource
+  r_NET_STACK@&#123; shape: notch-rect, label: "NET_STACK" &#125;
+  r_NET_STACK:::resource
+  r_WD_DEV@&#123; shape: notch-rect, label: "WD_DEV" &#125;
+  r_WD_DEV:::resource
+  r_LED@&#123; shape: notch-rect, label: "LED" &#125;
+  r_LED:::resource
+  r_FLASH_DEV@&#123; shape: notch-rect, label: "FLASH_DEV" &#125;
+  r_FLASH_DEV:::resource
+  r_USB_DEV --> n_NET
+  r_HTTP_STATS --> n_HTTP
+  r_NET_STACK -- "local · shared" --> n_HTTP
+  r_WD_DEV --> n_WATCHDOG
+  r_LED --> n_HEARTBEAT
+  r_FLASH_DEV --> n_OTA
+  n_NET -- "provides" --> r_NET_STACK
+            </code></pre>
+          </div>
+        </section>
+
+        <section class="home-code">
+          <div class="home-code-grid">
+            <div class="home-code-frame">
+              <Fragment set:html={`<pre><code class="language-rust">${highlightedA}</code></pre>`} />
+            </div>
+            <div class="home-code-frame">
+              <Fragment set:html={`<pre><code class="language-rust">${highlightedB}</code></pre>`} />
+            </div>
+          </div>
+          <p class="home-code-caption">
+            The diagram above is what this declaration compiles into. Full
+            source in
+            <a href="https://github.com/cedrivard/embassy-supervisor/tree/main/firmware/src/main.rs"
+              ><code>firmware/src/main.rs</code></a
+            >.
+          </p>
+        </section>
+
+        <section class="home-strip">
+          <h2>What the supervisor takes over</h2>
+          <div class="card-grid">
+            <div class="card">
+              <span class="card-kicker">Bring-up</span>
+              <h3>Ordered start, reverse teardown</h3>
+              <p>
+                Dependencies become a compile-time order. Starts and stops
+                run as waves that overlap what can overlap, so a sensor
+                does not queue behind a slow radio, and a provider keeps
+                serving while its dependents shut down.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Modes</span>
+              <h3>A lifecycle per task</h3>
+              <p>
+                Terminate respawns clean. Pause parks a task holding its
+                bus or socket. OnDemand members grow only when a pool
+                needs them.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Coupling</span>
+              <h3>The graph reacts at runtime</h3>
+              <p>
+                Epochs let a running task notice its provider restarted;
+                bound edges stop dependents when a provider drops and
+                bring them back with it; restart re-gates one subtree
+                without a reset.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Gated reads</span>
+              <h3>Reads that wait, holds that count</h3>
+              <p>
+                Opening a signal can start its producer and wait for it;
+                leased handles are counted so nothing frees a value a
+                consumer still holds. Ordering can live entirely in the
+                runtime couplings, with no task dependencies at all.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Dataflow</span>
+              <h3>Declared, even derived</h3>
+              <p>
+                Say who writes and who reads each signal, or let the
+                attribute derive it from the code. One-sided and dead
+                signals get caught at build time.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Control</span>
+              <h3>Driven from anywhere</h3>
+              <p>
+                Start, stop and restart nodes or whole subtrees from a
+                request handler, a button or a test, through a lossless
+                mailbox.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Pools</span>
+              <h3>Workers that follow load</h3>
+              <p>
+                An elastic pool grows under pressure and shrinks after a
+                cooldown, inside a member budget you set in the
+                declaration.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Health</span>
+              <h3>A sweep catches what stalls</h3>
+              <p>
+                Heartbeat budgets turn wedged tasks into reported events,
+                readiness means "actually producing", and each node can
+                describe itself in one line. Escalation stays yours.
+              </p>
+            </div>
+
+          </div>
+
+          <h2>Where it fits</h2>
+          <div class="card-grid">
+            <div class="card">
+              <span class="card-kicker">Field devices</span>
+              <h3>Battery sensor nodes</h3>
+              <p>
+                Wake, publish, sleep. The graph that powers bring-up also
+                drives the cycle: no per-loop glue, no manual tear-down,
+                the same declaration runs every wake.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Hubs</span>
+              <h3>Connected gateways</h3>
+              <p>
+                Add a service to the graph and it joins bring-up. Remove
+                one and it tears down cleanly. Runtime reconfiguration
+                becomes a graph edit, not a code change.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Control</span>
+              <h3>Robotics and motion</h3>
+              <p>
+                A preemptive control tier and a cooperative telemetry
+                tier share one graph. Mission-phase start and stop are
+                normal lifecycle transitions, and the runtime keeps both
+                tiers ordered.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Products</span>
+              <h3>OTA-first devices</h3>
+              <p>
+                An update is just a different graph state. Drain live
+                services, free their memory, swap the image, roll back.
+                The same declaration drives boot and update alike.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Recorders</span>
+              <h3>Data loggers</h3>
+              <p>
+                Sample, buffer, and flush to a shared card. The teardown
+                order is the reverse of bring-up, so the writer closes
+                before the mount goes down. Stalls surface before they
+                fill the buffer.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Production</span>
+              <h3>Factory test rigs</h3>
+              <p>
+                The same bring-up order runs on every unit. A failed
+                subsystem shows up as one readable line and gets
+                restarted in isolation, so one bad device does not stop
+                the line.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Product lines</span>
+              <h3>Hardware variants</h3>
+              <p>
+                Nodes that aren't on this board compile out and cost
+                nothing. Optional drivers start on first read instead of
+                at boot. The graph stays the same across the product
+                line.
+              </p>
+            </div>
+            <div class="card">
+              <span class="card-kicker">Streaming</span>
+              <h3>Audio and video nodes</h3>
+              <p>
+                Pipeline stages come up in strict order, worker pools
+                scale with the load, and a stalled stage is reported
+                before the buffer underruns. One declaration, one
+                runtime.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="home-foot">
+        <span>embassy-supervisor is dual-licensed MIT OR Apache-2.0.</span>
+        <span class="foot-links">
+          <a href="https://github.com/cedrivard/embassy-supervisor">GitHub</a>
+          <a href="https://crates.io/crates/embassy-supervisor">crates.io</a>
+          <a href="https://docs.rs/embassy-supervisor">docs.rs</a>
+        </span>
+      </footer>
+    </div>
+  </body>
+</html>
+
+<script>
+  // Deliberately not the same text as the Head.astro bootstrap: Astro
+  // dedupes identical scripts into one chunk bound to whichever component
+  // declares it first, and this page does not use the Starlight head.
+  if (document.querySelector('pre[data-language="mermaid"]')) {
+    import('../scripts/mermaid');
+  }
+</script>

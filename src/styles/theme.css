@@ -1,0 +1,1113 @@
+/* embassy-supervisor site theme.
+   Instrument-panel identity: deep navy canvas, cyan/violet/rose signal hues,
+   IBM Plex type system. Light variant is the same panel on engineering paper. */
+
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
+/* ---------------------------------------------------------------- tokens */
+
+:root {
+  /* Dark is the root palette, matching Starlight's own cascade. The gray
+     scale is left stock: Starlight flips its direction between themes and
+     uses its steps for surfaces (nav, sidebar, code frames), so only the
+     named variables and the private tokens below carry this design. */
+  --sup-cyan: #22d3ee;
+  --sup-cyan-bright: #67e8f9;
+  --sup-violet: #a78bfa;
+  --sup-rose: #fb7185;
+  --sup-pink: #f472b6;
+  --sup-lime: #a3e635;
+  --sl-font: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+
+  --sl-color-white: #f1f5ff;
+  --sl-color-black: #0a0e1c;
+  --sl-color-accent: var(--sup-cyan);
+  --sl-color-accent-high: #a5f3fc;
+  --sl-color-accent-low: #155e75;
+  --sl-color-text-accent: #6ee7f5;
+  --sl-color-text-invert: #061019;
+  --sl-color-bg-nav: var(--sup-canvas);
+  --sl-color-bg-sidebar: var(--sup-canvas);
+  --sl-color-bg-inline-code: #101a30;
+  --sl-color-border-inline-code: #223158;
+  --sl-shadow-l: 0 18px 50px -20px rgb(0 0 0 / 0.55);
+
+  --sup-canvas: #0a0e1c;
+  --sup-panel: #0f1526;
+  --sup-grid: rgb(120 170 255 / 0.09);
+  --sup-hairline: #212c49;
+  --sup-label: #8ea0bf;
+  --sup-muted: #93a2c0;
+  --sup-heading: #f1f5ff;
+  --sup-code-text: #7ee2f5;
+  --sup-edge-glow: rgb(167 139 250 / 0.55);
+  --sup-signal-glow: rgb(167 139 250 / 0.5);
+}
+
+[data-theme='light'] {
+  --sup-cyan: #0e7490;
+  --sup-cyan-bright: #0891b2;
+  --sup-violet: #6d28d9;
+  --sup-rose: #be123c;
+  --sup-pink: #db2777;
+  --sup-lime: #4d7c0f;
+
+  --sl-color-white: #0c1322;
+  --sl-color-black: #f7f8fc;
+  --sl-color-accent: var(--sup-cyan);
+  --sl-color-accent-high: #155e75;
+  --sl-color-accent-low: #22d3ee;
+  --sl-color-text-accent: #0c637d;
+  --sl-color-text-invert: #ffffff;
+  --sl-color-bg-nav: var(--sup-canvas);
+  --sl-color-bg-sidebar: var(--sup-canvas);
+  --sl-color-bg-inline-code: #e8f6fa;
+  --sl-color-border-inline-code: #cde9f1;
+  --sl-shadow-l: 0 12px 40px -16px rgb(30 41 80 / 0.18);
+
+  --sup-canvas: #f7f8fc;
+  --sup-panel: #ffffff;
+  --sup-grid: rgb(13 42 80 / 0.1);
+  --sup-hairline: #dfe4f0;
+  --sup-label: #5b688a;
+  --sup-muted: #5b688a;
+  --sup-heading: #0c1322;
+  --sup-code-text: #0c5f78;
+  --sup-edge-glow: rgb(109 40 217 / 0.4);
+  --sup-signal-glow: rgb(109 40 217 / 0.35);
+}
+
+/* The right rail column is an inner flex row: .main-pane must grow so
+   collapsing the aside hands the space to the content. */
+.main-frame .main-pane {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* With a rail away, the reading column may use the freed space instead of
+   the default 45rem cap. */
+/* With a rail away (hidden or collapsed to a hover strip), the reading
+   column may use the freed space instead of the default 45rem cap. */
+html:is(
+    [data-panel-left='hidden'],
+    [data-panel-left='hover'],
+    [data-panel-right='hidden'],
+    [data-panel-right='hover']
+  ) {
+  --sl-content-width: min(72rem, calc(100vw - 4rem));
+}
+
+/* Starlight hugs the text to the TOC (auto 0); with no right rail the
+   column should center in what remains. */
+/* Starlight hugs the text to the TOC (auto 0); with no permanent right
+   rail (hidden, or collapsed into a hover strip) the column centers in
+   what remains. */
+html:is([data-panel-right='hidden'], [data-panel-right='hover']) .main-pane {
+  --sl-content-margin-inline: auto;
+}
+
+/* Starlight lets the right rail absorb all free width (max(300px, ...))
+   and hugs the text to it, which reads as a huge right rail and asymmetric
+   margins on wide screens. Match the left rail's width and let the column
+   center between the rails. */
+aside.right-sidebar-container {
+  width: var(--sl-sidebar-width);
+}
+
+html[data-has-sidebar][data-has-toc] .main-pane {
+  --sl-content-margin-inline: auto;
+}
+
+/* --------------------------------------------------------- panel modes */
+
+.sidebar-pane,
+.main-frame,
+aside.right-sidebar-container {
+  transition:
+    transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+    padding-inline-start 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+    width 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+/* Left panel: fixed, so hover reveals it as an overlay. */
+html[data-panel-left='hidden'] .sidebar-pane {
+  transform: translateX(-100%);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.3s ease,
+    visibility 0s 0.3s;
+}
+
+html[data-panel-left='hidden'] .main-frame {
+  padding-inline-start: 0;
+}
+
+html[data-panel-left='hover'] .sidebar-pane {
+  transform: translateX(calc(-100% + 16px));
+  border-right: 3px solid transparent;
+  border-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--sup-cyan) 60%, transparent),
+      color-mix(in oklab, var(--sup-violet) 60%, transparent)
+    )
+    1;
+}
+
+html[data-panel-left='hover'] .sidebar-pane:hover {
+  transform: none;
+  background: var(--sup-canvas);
+  box-shadow: 24px 0 60px -34px rgb(0 0 0 / 0.45);
+  border-right: none;
+}
+
+html[data-panel-left='hover'] .main-frame {
+  padding-inline-start: 16px;
+}
+
+/* Right panel: in-flow, so hovering expands it and the content reflows. */
+html[data-panel-right='hidden'] aside.right-sidebar-container {
+  width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    width 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.3s ease,
+    visibility 0s 0.3s;
+}
+
+html[data-panel-right='hover'] aside.right-sidebar-container {
+  width: 16px;
+  border-left: 3px solid transparent;
+  border-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--sup-cyan) 60%, transparent),
+      color-mix(in oklab, var(--sup-violet) 60%, transparent)
+    )
+    1;
+}
+
+html[data-panel-right='hover'] aside.right-sidebar-container:hover {
+  width: var(--sup-toc-w, calc(var(--sl-sidebar-width) + 0.75rem));
+  box-shadow: -24px 0 60px -34px rgb(0 0 0 / 0.45);
+  border-left: none;
+}
+
+html[data-panel-right='hover'] .right-sidebar-panel {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+html[data-panel-right='hover'] aside.right-sidebar-container:hover
+  .right-sidebar-panel {
+  opacity: 1;
+}
+
+/* Toggle buttons in the header's right group. */
+button.sup-panel-toggle {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-inline: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sup-muted);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+button.sup-panel-toggle:hover {
+  background: color-mix(in oklab, var(--sup-cyan) 10%, transparent);
+  color: var(--sup-cyan);
+}
+
+button.sup-panel-toggle[data-mode='visible'] {
+  color: var(--sup-cyan);
+}
+
+/* Pages without a TOC have no right rail to control. */
+html:not([data-has-toc]) .sup-panel-toggle[data-side='right'] {
+  display: none;
+}
+
+/* Panel tops carry a soft aurora glow, and the table of contents marks the
+   current entry with the headline gradient. The header hairline and the
+   right rail's glow live with their background rules below. */
+.sidebar-pane {
+  background-image: radial-gradient(
+    130% 36% at 50% 0%,
+    color-mix(in oklab, var(--sup-violet) 7%, transparent),
+    transparent 72%
+  );
+}
+
+/* Flat fallback; the gradient entry below overrides where clip is supported. */
+.right-sidebar-panel a[aria-current='true'] {
+  color: var(--sup-cyan);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .right-sidebar-panel a[aria-current='true'] {
+    background-image: linear-gradient(
+      100deg,
+      var(--sup-cyan) 0%,
+      var(--sup-violet) 90%
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+}
+/* Aurora accents for the docs pane, echoing the landing page's signature. */
+.main-pane {
+  background:
+    radial-gradient(
+      ellipse 55% 32% at 85% 0%,
+      color-mix(in oklab, var(--sup-violet) 7%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 45% 26% at 8% 4%,
+      color-mix(in oklab, var(--sup-cyan) 6%, transparent),
+      transparent 70%
+    );
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .main-pane h1 {
+    background-image: linear-gradient(
+      100deg,
+      var(--sup-cyan) 0%,
+      var(--sup-violet) 80%
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+}
+
+.main-pane h2 {
+  background:
+    linear-gradient(
+      90deg,
+      var(--sup-cyan) 0 56px,
+      var(--sup-violet) 56px 120px,
+      transparent 120px
+    )
+    left bottom / 100% 3px no-repeat,
+    linear-gradient(90deg, var(--sup-hairline), transparent) left bottom /
+      100% 1px no-repeat;
+}
+
+/* Gradient probes and rails instead of flat accents. */
+.sidebar-content a[aria-current='page']::before {
+  background: linear-gradient(180deg, var(--sup-cyan), var(--sup-violet));
+}
+
+.expressive-code .frame:has(pre[data-language='rust']) {
+  border-left: 3px solid transparent;
+  border-image: linear-gradient(
+      180deg,
+      var(--sup-cyan),
+      var(--sup-violet)
+    )
+    1;
+}
+
+.main-pane thead th {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--sup-cyan) 6%, transparent),
+    transparent
+  );
+}
+
+.card:hover {
+  box-shadow: 0 10px 34px -14px
+    color-mix(in oklab, var(--sup-cyan) 55%, transparent);
+}
+
+/* Seamless rails: the side panels keep their independent scroll but never
+   show a scrollbar. */
+.sidebar-pane,
+.right-sidebar-panel {
+  scrollbar-width: none;
+}
+
+.sidebar-pane::-webkit-scrollbar,
+.right-sidebar-panel::-webkit-scrollbar {
+  display: none;
+}
+
+/* Starlight renders the frontmatter title as its own h1#_top; the page body
+   carries the section eyebrow followed by the real h1. Hide the duplicate so
+   the section label leads and the title appears once. */
+.main-pane h1#_top {
+  display: none;
+}
+
+html {
+  background: var(--sup-canvas);
+  scroll-behavior: smooth;
+}
+
+/* ------------------------------------------------------------ typography */
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  color: var(--sup-heading);
+}
+
+h1 {
+  font-weight: 650;
+}
+
+.main-pane h2 {
+  padding-bottom: 0.35rem;
+}
+
+.main-pane h3 {
+  color: var(--sup-heading);
+}
+
+/* Mono eyebrow for section tops, used on key pages */
+.eyebrow {
+  font-family: var(--sl-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sup-label);
+}
+
+strong {
+  color: var(--sup-heading);
+  font-weight: 600;
+}
+
+.main-pane a {
+  color: var(--sl-color-text-accent);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.main-pane a:hover {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--sup-cyan) 60%, transparent);
+}
+
+/* ------------------------------------------------------------ top frame */
+
+/* Seamless: the header and both sidebars share the page canvas. */
+header.header {
+  background:
+    linear-gradient(
+        90deg,
+        color-mix(in oklab, var(--sup-cyan) 40%, transparent),
+        color-mix(in oklab, var(--sup-violet) 40%, transparent) 45%,
+        transparent 78%
+      )
+      left bottom / 100% 2px no-repeat,
+    var(--sup-canvas);
+  border-bottom: none;
+}
+
+header.header .site-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+header.header .site-title span {
+  color: var(--sl-color-white);
+}
+
+/* --------------------------------------------------------------- sidebar */
+
+nav.sidebar,
+.sidebar-content {
+  background: transparent;
+  border-right: none;
+  font-size: 0.86rem;
+}
+
+/* Group labels read as instrument captions */
+.sidebar-content .large,
+.sidebar-content details summary {
+  font-family: var(--sl-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sup-label);
+  font-weight: 500;
+}
+
+.sidebar-content a {
+  border-radius: 6px;
+  color: var(--sl-color-text);
+}
+
+.sidebar-content a:hover {
+  color: var(--sup-heading);
+  background: color-mix(in oklab, var(--sup-cyan) 7%, transparent);
+}
+
+.sidebar-content a[aria-current='page'] {
+  position: relative;
+  color: var(--sup-heading);
+  background: color-mix(in oklab, var(--sup-cyan) 10%, transparent);
+  font-weight: 500;
+}
+
+.sidebar-content a[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--sup-cyan);
+  box-shadow: 0 0 10px 1px color-mix(in oklab, var(--sup-cyan) 60%, transparent);
+}
+
+@media (max-width: 50rem) {
+  .sidebar-content a[aria-current='page']::before {
+    display: none;
+  }
+}
+
+.display-current,
+.mobile-preferences summary,
+.site-title {
+  color: var(--sl-color-text);
+}
+
+/* ----------------------------------------------------------- right rail */
+
+.right-sidebar-panel {
+  background:
+    radial-gradient(
+        120% 30% at 60% 0%,
+        color-mix(in oklab, var(--sup-cyan) 6%, transparent),
+        transparent 72%
+      ),
+    transparent;
+  border-left: none;
+}
+
+.right-sidebar .large {
+  font-family: var(--sl-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sup-label);
+}
+
+.right-sidebar-panel a {
+  color: var(--sl-color-text);
+}
+
+
+/* ------------------------------------------------------------------ code */
+
+code,
+pre {
+  font-family: var(--sl-font-mono);
+}
+
+:not(pre) > code {
+  font-size: 0.86em;
+  border-radius: 5px;
+  padding: 0.12em 0.4em;
+  color: var(--sup-code-text);
+  background: var(--sl-color-bg-inline-code);
+  border: 1px solid var(--sl-color-border-inline-code);
+}
+
+.expressive-code .frame {
+  border: 1px solid var(--sup-hairline);
+  border-radius: 10px;
+  background: var(--sup-panel);
+  box-shadow: none;
+}
+
+.expressive-code pre {
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+/* Rust code fences: a faint cyan probe on the left rail */
+.expressive-code .frame:has(pre[data-language='rust']) {
+  border-left: 3px solid color-mix(in oklab, var(--sup-cyan) 55%, transparent);
+}
+
+/* ------------------------------------------------------- diagram figures */
+
+figure.graph {
+  margin: 1.6rem 0;
+  border: 1px solid var(--sup-hairline);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 25% 0%, color-mix(in oklab, var(--sup-violet) 7%, transparent), transparent 55%),
+    var(--sup-panel);
+  box-shadow: var(--sl-shadow-l);
+  overflow: hidden;
+}
+
+figure.graph .graph-canvas {
+  padding: 1.4rem 1.2rem;
+  background-image: radial-gradient(var(--sup-grid) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: center;
+  display: flex;
+  justify-content: center;
+}
+
+figure.graph svg {
+  max-width: 100%;
+  height: auto;
+}
+
+figure.graph .node {
+  cursor: default;
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+figure.graph .node:hover {
+  filter: drop-shadow(0 0 9px color-mix(in oklab, var(--sup-cyan) 45%, transparent));
+}
+
+figure.graph .edgePaths path {
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+figure.graph .edgeLabels .label {
+  transition: opacity 180ms ease;
+}
+
+/* Hover focus: the hovered element and its neighbourhood stay lit. */
+figure.graph svg.focus-mode .node:not(.f-on) {
+  opacity: 0.22;
+}
+
+figure.graph svg.focus-mode .edgePaths path:not(.f-hot) {
+  opacity: 0.1;
+}
+
+figure.graph svg.focus-mode .edgeLabels .label:not(.f-hot) {
+  opacity: 0.15;
+}
+
+figure.graph svg.focus-mode .edgePaths path.f-hot {
+  filter: drop-shadow(0 0 7px var(--sup-edge-glow));
+}
+
+figure.graph svg.focus-mode .node.f-on {
+  filter: drop-shadow(0 0 8px color-mix(in oklab, var(--sup-cyan) 40%, transparent));
+}
+
+/* Ambient: signal nodes breathe, paused outlines march slowly. */
+figure.graph .node.signal {
+  animation: graph-pulse 3.4s ease-in-out infinite;
+}
+
+figure.graph .node.paused :is(rect, polygon, path) {
+  animation: graph-march 3.2s linear infinite;
+}
+
+/* Label typography must match what mermaid measured: no font-size or
+   padding overrides here, they change the rendered width/height after the
+   label boxes were already sized, clipping multi-line labels. */
+figure.graph .edgeLabel,
+figure.graph span.edgeLabel {
+  font-family: var(--sl-font-mono);
+  color: var(--sl-color-text);
+  background: color-mix(in oklab, var(--sup-panel) 88%, transparent);
+  border-radius: 4px;
+}
+
+figure.graph .cluster rect {
+  rx: 10;
+}
+
+@keyframes graph-march {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+@keyframes graph-pulse {
+  0%,
+  100% {
+    filter: none;
+  }
+  50% {
+    filter: drop-shadow(0 0 9px var(--sup-signal-glow));
+  }
+}
+
+.graph-error {
+  padding: 1rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.8rem;
+  color: var(--sl-color-text);
+}
+
+/* ----------------------------------------------------------- mode chips */
+
+.chip {
+  display: inline-block;
+  font-family: var(--sl-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding: 0.28em 0.6em;
+  border-radius: 999px;
+  border: 1px solid;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.chip-terminate {
+  color: var(--sup-cyan);
+  border-color: color-mix(in oklab, var(--sup-cyan) 45%, transparent);
+  background: color-mix(in oklab, var(--sup-cyan) 10%, transparent);
+}
+
+.chip-pause {
+  color: var(--sup-rose);
+  border-color: color-mix(in oklab, var(--sup-rose) 45%, transparent);
+  background: color-mix(in oklab, var(--sup-rose) 10%, transparent);
+}
+
+.chip-ondemand {
+  color: var(--sup-pink);
+  border-color: color-mix(in oklab, var(--sup-pink) 45%, transparent);
+  background: color-mix(in oklab, var(--sup-pink) 10%, transparent);
+}
+
+.chip-flag {
+  color: var(--sup-lime);
+  border-color: color-mix(in oklab, var(--sup-lime) 45%, transparent);
+  background: color-mix(in oklab, var(--sup-lime) 12%, transparent);
+}
+
+/* ---------------------------------------------------------------- tables */
+
+.main-pane table {
+  display: table;
+  width: 100%;
+  font-size: 0.9rem;
+  border-collapse: collapse;
+}
+
+.main-pane :is(th, td) {
+  border: 1px solid var(--sup-hairline);
+  padding: 0.5rem 0.75rem;
+}
+
+.main-pane thead th {
+  background: color-mix(in oklab, var(--sup-panel) 70%, var(--sup-canvas));
+  font-family: var(--sl-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sup-label);
+  font-weight: 500;
+}
+
+.main-pane tbody tr:hover {
+  background: color-mix(in oklab, var(--sup-cyan) 5%, transparent);
+}
+
+.main-pane table code {
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.card-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  margin: 1.4rem 0;
+}
+
+.card {
+  border: 1px solid var(--sup-hairline);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  background: color-mix(in oklab, var(--sup-panel) 75%, var(--sup-canvas));
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.card:hover {
+  border-color: color-mix(in oklab, var(--sup-cyan) 55%, transparent);
+  transform: translateY(-2px);
+}
+
+.card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.98rem;
+}
+
+.card p {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--sup-muted);
+  line-height: 1.55;
+}
+
+.card .card-kicker {
+  font-family: var(--sl-font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sup-label);
+  display: block;
+  margin-bottom: 0.45rem;
+}
+
+/* callouts: keep Starlight's, sharpen the accent */
+.sl-callout {
+  border-radius: 10px;
+}
+
+/* ------------------------------------------------------------- home page */
+
+.home {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 80% 50% at 70% -10%, color-mix(in oklab, var(--sup-violet) 14%, transparent), transparent),
+    radial-gradient(ellipse 60% 40% at 10% 10%, color-mix(in oklab, var(--sup-cyan) 10%, transparent), transparent),
+    var(--sup-canvas);
+  color: var(--sl-color-white);
+  font-family: var(--sl-font);
+}
+
+.home a {
+  color: inherit;
+}
+
+.home-skip {
+  position: absolute;
+  left: -9999px;
+}
+
+.home-skip:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 10;
+  background: var(--sup-panel);
+  border: 1px solid var(--sup-cyan);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+}
+
+.home-nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.1rem 1.5rem;
+}
+
+.home-nav .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 600;
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+
+.home-nav .brand img {
+  width: 28px;
+  height: 28px;
+}
+
+.home-nav .spacer {
+  flex: 1;
+}
+
+.home-nav .docs-link {
+  font-family: var(--sl-font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  color: var(--sup-muted);
+  border: 1px solid var(--sup-hairline);
+  border-radius: 999px;
+  padding: 0.45em 1em;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.home-nav .docs-link:hover {
+  border-color: color-mix(in oklab, var(--sup-cyan) 60%, transparent);
+  color: var(--sup-cyan);
+}
+
+.home-hero {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 3.2rem 1.5rem 1rem;
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+}
+
+@media (min-width: 62rem) {
+  .home-hero {
+    grid-template-columns: minmax(0, 46%) minmax(0, 1fr);
+    padding-top: 4.5rem;
+  }
+}
+
+.home-kicker {
+  font-family: var(--sl-font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--sup-cyan);
+  margin: 0 0 1.1rem;
+}
+
+.home-hero h1 {
+  font-size: clamp(2.1rem, 4.4vw, 3.2rem);
+  line-height: 1.08;
+  margin: 0 0 1.1rem;
+  letter-spacing: -0.025em;
+  font-weight: 650;
+  color: var(--sup-heading);
+}
+
+.home-hero h1 em {
+  font-style: normal;
+  color: var(--sup-cyan);
+}
+
+.home-lede {
+  font-size: 1.04rem;
+  line-height: 1.65;
+  color: var(--sl-color-text);
+  margin: 0 0 1.6rem;
+  max-width: 34rem;
+}
+.home-lede code.home-lede-crate {
+  color: var(--sup-cyan-bright);
+  background: color-mix(in oklab, var(--sup-cyan) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--sup-cyan) 40%, transparent);
+  border-radius: 4px;
+  padding: 0.05em 0.4em;
+  font-weight: 500;
+}
+[data-theme='light'] .home-lede code.home-lede-crate {
+  color: var(--sup-cyan);
+  background: color-mix(in oklab, var(--sup-cyan) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--sup-cyan) 35%, transparent);
+}
+.home-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.home-ctas a {
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 10px;
+  padding: 0.65em 1.25em;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.home-ctas .primary {
+  background: var(--sup-cyan);
+  color: #04202a;
+  font-weight: 600;
+  box-shadow: 0 8px 28px -10px color-mix(in oklab, var(--sup-cyan) 70%, transparent);
+}
+
+.home-ctas .primary:hover {
+  transform: translateY(-1px);
+}
+
+.home-ctas .ghost {
+  border: 1px solid var(--sup-hairline);
+  color: var(--sup-heading);
+}
+
+.home-ctas .ghost:hover {
+  border-color: color-mix(in oklab, var(--sup-cyan) 55%, transparent);
+  color: var(--sup-cyan);
+}
+
+.home-hero-graph figure.graph {
+  margin: 0;
+}
+.home-code {
+  max-width: 72rem;
+  margin: 2.5rem auto 0;
+  padding: 0 1.5rem;
+}
+.home-code-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+}
+@media (max-width: 50rem) {
+  .home-code-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.home-code-frame {
+  position: relative;
+  border: 1px solid var(--sup-hairline);
+  border-radius: 12px;
+  background: var(--sup-panel);
+  overflow: hidden;
+}
+.home-code-frame pre {
+  margin: 0;
+  padding: 0.7rem 0.95rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.home-code-frame pre::-webkit-scrollbar {
+  display: none;
+}
+.home-code-frame code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--sup-code-text);
+}
+.home-code-caption code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.82rem;
+}
+.home-code-frame code .tok-key  { color: #4ec9b0; }
+.home-code-frame code .tok-kw   { color: #ce9178; }
+.home-code-frame code .tok-life { color: #ce9178; }
+.home-code-frame code .tok-fn   { color: #dcdcaa; }
+.home-code-frame code .tok-type { color: #dcdcaa; }
+.home-code-frame code .tok-mod  { color: #dcdcaa; }
+.home-code-frame code .tok-num  { color: #b5cea8; }
+.home-code-frame code .tok-prim { color: #b5cea8; }
+.home-code-frame code .tok-const { color: #9cdcfe; }
+[data-theme='light'] .home-code-frame code .tok-key  { color: #267f99; }
+[data-theme='light'] .home-code-frame code .tok-kw   { color: #af00db; }
+[data-theme='light'] .home-code-frame code .tok-life { color: #af00db; }
+[data-theme='light'] .home-code-frame code .tok-fn   { color: #795e26; }
+[data-theme='light'] .home-code-frame code .tok-type { color: #267f99; }
+[data-theme='light'] .home-code-frame code .tok-mod  { color: #795e26; }
+[data-theme='light'] .home-code-frame code .tok-num  { color: #098658; }
+[data-theme='light'] .home-code-frame code .tok-prim { color: #098658; }
+[data-theme='light'] .home-code-frame code .tok-const { color: #001080; }
+.home-fits {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--sup-muted);
+  margin: 0.6rem 0 0;
+  max-width: 60rem;
+}
+.home-fits a {
+  color: var(--sup-cyan);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--sup-cyan) 60%, transparent);
+}
+.home-fits a:hover {
+  color: var(--sup-cyan-bright);
+}
+
+.home-strip {
+  max-width: 72rem;
+  margin: 2.5rem auto 0;
+  padding: 0 1.5rem 4rem;
+}
+
+.home-strip h2 {
+  font-family: var(--sl-font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--sup-label);
+  margin: 2.4rem 0 1rem;
+}
+
+.home-foot {
+  border-top: 1px solid var(--sup-hairline);
+  padding: 1.6rem 1.5rem 2.4rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--sup-muted);
+}
+
+.home-foot .foot-links {
+  display: flex;
+  gap: 1.2rem;
+  margin-left: auto;
+}
+
+.home-foot a {
+  text-decoration: none;
+}
+
+.home-foot a:hover {
+  color: var(--sup-cyan);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .home-ctas a,
+  .card {
+    transition: none;
+  }
+
+  figure.graph .node.signal,
+  figure.graph .node.paused :is(rect, polygon, path) {
+    animation: none;
+  }
+
+  figure.graph .node,
+  figure.graph .edgePaths path,
+  figure.graph .edgeLabels .label {
+    transition: none;
+  }
+  .sidebar-pane,
+  .main-frame,
+  aside.right-sidebar-container,
+  html[data-panel-left='hidden'] .sidebar-pane,
+  html[data-panel-right='hidden'] aside.right-sidebar-container {
+    transition: none;
+  }
+}
