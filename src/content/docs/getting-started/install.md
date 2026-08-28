@@ -64,6 +64,29 @@ The supervisor logs lifecycle events through an optional backend:
 With neither enabled the log calls compile to nothing. If you want stale
 reports and bring-up lines visible anywhere, enable one.
 
+## Release profile
+
+For smaller, better optimized firmware, set this profile in the workspace
+root's `Cargo.toml`:
+
+```toml [Cargo.toml]
+[profile.release]
+debug = 2
+lto = "fat"
+opt-level = "s"
+codegen-units = 1
+```
+
+- `lto = "fat"` runs link-time optimization across the whole dependency
+  tree, letting the compiler inline and eliminate code across crate
+  boundaries.
+- `codegen-units = 1` compiles each crate as one unit instead of parallel
+  chunks, enabling more thorough optimization at the cost of compile time.
+- `opt-level = "s"` optimizes for size rather than speed, the usual
+  embedded budget.
+- `debug = 2` keeps full debug symbols in the ELF for probe-rs and GDB. It
+  does not change codegen, and debug sections are not flashed to the device.
+
 ## Verify the toolchain
 
 ```console
