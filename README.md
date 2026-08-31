@@ -10,14 +10,20 @@ crate's own tooling emits.
 
 ## Run it locally
 
-Requires [Bun](https://bun.sh) (or npm; adjust the commands):
+Requires [Bun](https://bun.sh) (or npm; adjust the commands) plus a Rust
+toolchain for the playground's wasm build:
 
 ```console
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack        # or cargo-binstall wasm-pack
+
 bun install
-bun run dev        # dev server with hot reload
-bun run build      # static build into dist/
+bun run dev        # builds the playground wasm, then dev server with hot reload
+bun run build      # wasm + static build into dist/
 bun run preview    # serve the built site
 node tools/check-links.mjs dist   # audit internal links
+
+cargo test --manifest-path playground/Cargo.toml   # playground interpreter tests
 ```
 
 ## How it is put together
@@ -34,6 +40,15 @@ node tools/check-links.mjs dist   # audit internal links
 - `src/components/Head.astro` - loads the renderer lazily, only on pages
   that carry a diagram.
 - `src/pages/index.astro` - the landing page, outside the docs layout.
+- `src/pages/playground.astro` + `src/components/playground/` - the
+  interactive playground: a React island (editor, live React Flow graph,
+  device rail, logs) over `playground/`, a Rust crate compiled to wasm by
+  `bun run wasm` into `src/generated/` (gitignored). The crate runs the real
+  `embassy-supervisor` runtime on embassy-executor's wasm platform with the
+  mock time driver, parses the DSL with `embassy-supervisor-syntax`, and
+  rebuilds the declared graph at runtime; its native tests
+  (`playground/tests/`) guard the whole interpreter on the std platform.
+  `guides/playground-notes.md` documents what is real vs simulated.
 
 ### Diagram conventions
 

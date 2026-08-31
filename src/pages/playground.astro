@@ -1,0 +1,54 @@
+---
+import { Image } from 'astro:assets';
+import Analytics from '../components/Analytics.astro';
+import ThemeBootstrap from '../components/ThemeBootstrap.astro';
+import PlaygroundApp from '../components/playground/PlaygroundApp';
+import logo from '../assets/logo.svg';
+import '../styles/theme.css';
+
+const base = import.meta.env.BASE_URL;
+const ogImage = new URL(`${base}og.png`, Astro.site).href;
+---
+
+<html lang="en">
+  <head>
+    <Analytics />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <ThemeBootstrap />
+    <meta
+      name="description"
+      content="Type a supervisor_graph! declaration and run it: the real embassy-supervisor runtime compiled to WebAssembly, with live graph, logs and virtual time."
+    />
+    <title>Playground · embassy-supervisor</title>
+    <meta property="og:title" content="embassy-supervisor playground" />
+    <meta
+      property="og:description"
+      content="Run a real supervised task graph in your browser."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content={ogImage} />
+  </head>
+  <body>
+    <div class="pg-page">
+      <nav class="pg-nav">
+        <a class="brand" href={`${base}`}>
+          <Image src={logo} alt="embassy-supervisor mark" width={24} height={24} />
+          <span>embassy-supervisor</span>
+        </a>
+        <span class="pg-nav-title">Playground</span>
+        <span class="pg-nav-note"
+          >the real runtime, in wasm, on a virtual clock — <a href={`${base}guides/playground-notes/`}
+            >how it works</a
+          ></span
+        >
+      </nav>
+      <main id="main">
+        <PlaygroundApp client:only="react" />
+        <noscript>
+          <p class="pg-error">The playground needs JavaScript and WebAssembly.</p>
+        </noscript>
+      </main>
+    </div>
+  </body>
+</html>

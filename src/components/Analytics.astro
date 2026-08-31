@@ -1,0 +1,30 @@
+---
+// Consent banner (iubenda) and GA4, only on the published site: `astro dev`
+// is not PROD, and a fork building for another `site` fails the host check.
+// Order is load-bearing — autoblocking must see the GA tags before they run.
+const SITE_HOST = 'embassy-supervisor.github.io';
+const enabled =
+  import.meta.env.PROD && new URL(Astro.site ?? 'http://localhost').hostname === SITE_HOST;
+---
+
+{
+  enabled && (
+    <>
+      <script is:inline>
+        var _iub = _iub || [];
+        _iub.csConfiguration = {"siteId":4661075,"cookiePolicyId":18020112,"lang":"en","storage":{"useSiteId":true}};
+      </script>
+      <script is:inline src="https://cs.iubenda.com/autoblocking/4661075.js" />
+      <script is:inline src="//cdn.iubenda.com/cs/gpp/stub.js" />
+      <script is:inline src="//cdn.iubenda.com/cs/iubenda_cs.js" charset="UTF-8" async />
+
+      <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-1SHQP5YBQ3" />
+      <script is:inline>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-1SHQP5YBQ3');
+      </script>
+    </>
+  )
+}

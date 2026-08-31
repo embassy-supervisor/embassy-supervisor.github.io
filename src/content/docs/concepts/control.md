@@ -46,16 +46,23 @@ cascading pair below.
 - **`activate(&node)`** pulls the node's transitive **dependencies** up in
   start order (skipping already-running ones). Activating a leaf rebuilds
   its whole supply chain.
-- **`deactivate(&node)`** tears the node's transitive **dependents** down in
-  reverse order, then the node. Deactivating a root retires its subtree.
+- **`deactivate(&node)`** stops the node and its transitive **dependents**
+  in reverse order. The target itself is marked `disabled`; its dependents
+  get the **`collateral`** hold instead, so retiring a subtree does not
+  brand every node in it as manually stopped.
 
-Not inverses on the same target: the round trip of `deactivate(NET)` is
-`activate` on a leaf of the retired subtree, which pulls the chain back up
-through it.
+The pair is symmetric over a subtree: the way back from `deactivate(NET)`
+is `activate(NET)`. It clears the latch, then releases every collateral
+dependent with no disabled node left in its transitive dependencies.
+Released `Terminate` and `Pause` nodes restart in the same wave; released
+`OnDemand` pool members are left to the elastic policy. Overlapping
+deactivations compose: a node under two deactivated ancestors comes back
+on the second `activate`, and a node deactivated directly keeps its latch
+through an ancestor's cycle. `start_node` overrides the hold by hand.
 
-Both set and clear the `disabled` latch, so a control decision survives wake
-respawns and pool regrows. `activate` on a **pool member** expands to the
-whole pool: respawn the floor, re-enable the on-demand members.
+Both latches survive wake respawns and pool regrows; only `activate`
+clears them. `activate` on a **pool member** expands to the whole pool:
+respawn the floor, re-enable the on-demand members.
 
 ```mermaid
 flowchart TD

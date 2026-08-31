@@ -1,5 +1,6 @@
 ---
 import { Image } from 'astro:assets';
+import Analytics from '../components/Analytics.astro';
 import ThemeBootstrap from '../components/ThemeBootstrap.astro';
 import logo from '../assets/logo.svg';
 import '../styles/theme.css';
@@ -72,8 +73,8 @@ const TOK_CLASSES = [
   'tok-mod',
   'tok-const',
 ];
-function highlight(src) {
-  const esc = (s) =>
+function highlight(src: string) {
+  const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   let out = '';
   let last = 0;
@@ -103,6 +104,7 @@ const highlightedB = highlight(rustSourceB);
 <!doctype html>
 <html lang="en">
   <head>
+    <Analytics />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <ThemeBootstrap />
@@ -161,6 +163,7 @@ const highlightedB = highlight(rustSourceB);
               Combine them to fit the design.
             </p>
             <div class="home-ctas">
+              <a class="play" href={`${base}playground/`}>Try it live</a>
               <a class="primary" href={`${base}getting-started/`}>Get started</a>
               <a
                 class="ghost"

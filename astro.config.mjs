@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 
 // GitHub Pages org site: served at the domain root. Change both when the
@@ -20,6 +21,8 @@ export default defineConfig({
     },
   },
   integrations: [
+    // Used only by the playground island; docs pages ship no React.
+    react(),
     starlight({
       title: 'embassy-supervisor',
       description:
@@ -100,6 +103,13 @@ export default defineConfig({
             { label: 'Testing on your desktop', slug: 'guides/testing' },
             { label: 'Diagram and lint tools', slug: 'guides/tools' },
             { label: 'The reference firmware', slug: 'guides/demo-firmware' },
+          ],
+        },
+        {
+          label: 'Playground',
+          items: [
+            { label: 'How it works', slug: 'guides/playground-notes' },
+            { label: 'The scenarios', slug: 'guides/playground-scenarios' },
           ],
         },
         {

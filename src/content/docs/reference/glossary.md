@@ -74,8 +74,14 @@ notice a provider restarted underneath it.</dd>
 
 <dt>disabled</dt>
 <dd>The control latch: not started at boot (<code>disabled;</code>) or
-stopped by <code>Deactivate</code>. Survives wake respawns and pool regrows
-until an <code>Activate</code> clears it.</dd>
+deactivated directly (<code>Deactivate</code> marks its target). Survives
+wake respawns and pool regrows until an <code>Activate</code> clears it.</dd>
+
+<dt>collateral</dt>
+<dd>Shown as "held" in the playground: stopped only as a dependent of a
+deactivated node. Blocks bring-up like <code>disabled</code>, but
+<code>Activate</code> on the ancestor releases it once no disabled node
+remains among its dependencies.</dd>
 
 <dt>detached</dt>
 <dd>A task that called <code>set_detached(true)</code>: self-managed from

@@ -145,7 +145,8 @@ static, including ISRs and driver callbacks, can call `NODE.beat()` or
 |---|---|
 | `is_running()` | an instance is up (spawned, not acked or exited) |
 | `is_busy()` | the instance reported `mark_busy()` |
-| `is_disabled()` | stopped at boot or control-deactivated |
+| `is_disabled()` | stopped at boot or deactivated directly (the `Deactivate` seed) |
+| `is_collateral()` | stopped as a dependent of a deactivated node; `Activate` on the ancestor releases it |
 | `is_detached()` | self-managed; lifecycle ops skip it |
 | `has_exited()` | the last instance's body returned |
 | `shutdown_requested()` | a stop or pause was requested |

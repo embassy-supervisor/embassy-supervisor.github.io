@@ -56,6 +56,8 @@ Why it holds together:
 This is the shape to reach for whenever construction is async, correlated
 and repeatable.
 
+*Run it: the **Gated bring-up** mechanism tour, and the modem side of the **Industrial edge gateway** and **Cellular asset tracker** scenarios in the [playground](/playground).*
+
 ## A control chain with a parameter store
 
 Flight-control-style stacks have one ancestor everything depends on (a
@@ -87,6 +89,8 @@ both the parameters and a live estimate, and its spawn budget covers the
 estimator's convergence. Nobody hand-sequenced anything: each edge states
 exactly what it waits for.
 
+*Run it: the **Config leases and rollover** tour; the **Edge A/V streaming head** runs the same lease contract as a DMA frame pool.*
+
 ## A supervised watchdog
 
 The hardware watchdog catches crashes; the graph feeds it honest inputs. A
@@ -111,6 +115,8 @@ from another task is a cheap atomic load. When the control loop wedges, the
 watchdog stops petting and the hardware resets the board: the escalation
 this particular domain deserves, wired with three lines.
 
+*Run it: the **Industrial edge gateway** - stop the feeder and the hardware watchdog reboots the MCU; the **CubeSat** runs HS the same way.*
+
 ## OTA as a control-started subsystem
 
 An updater has no business running until asked, and must coordinate the
@@ -131,6 +137,8 @@ it was down. The updater task itself is detached-in-spirit: it drives its
 own drain sequence (deactivating what it needs the memory of), flashes,
 and reboots. A run-once confirm task after it (see below) reports the
 result and exits.
+
+*Run it: OTA holds `disabled` in the **Industrial edge gateway** and **Cellular asset tracker**; the **CubeSat**'s ground-commanded apps are the same shape through `start_node`.*
 
 ## The sleep and wake coordinator
 
@@ -156,6 +164,8 @@ async fn power_task(node: &'static TaskNode, spawner: Spawner) {
 survives the wake); the coordinator itself is never a target of its own
 verbs.
 
+*Run it: the **Cellular asset tracker** - its Sleep/Wake buttons drive this exact recipe, consume fail-close included.*
+
 ## Run-once, ordered last
 
 A post-boot self-check that must run after *everything* is up, exactly once
@@ -180,6 +190,8 @@ Being a leaf of everything makes it last in topological order; detaching
 keeps the next wake cycle from re-running it; `exit:` parks its report in
 `SELF_CHECK_EXIT` for whoever asks.
 
+*Run it: the **Cellular asset tracker**'s SELFTEST node is this pattern verbatim.*
+
 ## One worker, N drivers
 
 The same sensor worker over different chips, without duplicating the body:
@@ -200,6 +212,8 @@ supervisor_graph! {
 
 Each declaration stamps its own monomorphized shell; the args evaluate at
 first poll, on the node's own executor.
+
+*Run it: every playground pool member and the **Robot cell controller**'s three servos share one worker body.*
 
 ## Choosing between shapes
 

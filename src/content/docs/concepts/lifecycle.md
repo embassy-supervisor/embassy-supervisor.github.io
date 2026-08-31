@@ -8,7 +8,7 @@ description: What each supervisor operation does to a node, by mode, and how the
 # Lifecycle and modes
 
 A node's mode decides what each lifecycle transition does to it. Three modes
-and two cross-cutting flags cover everything.
+and three cross-cutting flags cover everything.
 
 | mode | at boot | on teardown | on wake re-bring-up |
 |---|---|---|---|
@@ -28,12 +28,17 @@ stateDiagram-v2
     Exited --> Running : Activate<br/>(control respawn)
 ```
 
-Two flags cut across the modes:
+Three flags cut across the modes:
 
-- **`disabled`** (the `disabled;` clause, or a control `Deactivate`) is the
-  "someone said stop" latch. Every bring-up path honors it, so a manual stop
-  survives a wake respawn or an elastic regrow, until an `Activate` clears
-  it.
+- **`disabled`** (the `disabled;` clause, or a control `Deactivate` on the
+  node itself) is the "someone said stop" latch. Every bring-up path honors
+  it, so a manual stop survives a wake respawn or an elastic regrow, until
+  an `Activate` clears it.
+- **`collateral`** (`TaskNode::is_collateral()`) marks a node stopped only
+  as a *dependent* of a deactivated node. It blocks bring-up exactly like
+  `disabled`, but `activate` on the ancestor releases it once no disabled
+  node remains among its transitive dependencies. `start_node` overrides
+  the hold.
 - **`detached`** (`set_detached(true)`) is full hands-off. The supervisor
   starts a detached node once, then never drives it again: teardown,
   cascades, stop and respawn all skip it. Its `deps:` still order its first
@@ -49,23 +54,22 @@ dependents downward.
 |---|---|---|---|---|---|
 | `start` | spawn in dep order; idempotent | spawn cold, or **resume** an instance parked by an earlier teardown | skipped | skipped | first start spawns it; re-entry skips |
 | `teardown` | stop + ack | stop + ack, parks | stop if running | nothing to do | skipped |
-| `deactivate` | stopped + latched; cascades to dependents first | same, parks | stopped, whole pool | idempotent | skipped, even when targeted |
-| `activate` | started after its transitive deps | resumed in place | enabled only, policy regrows | clears the latch | skipped |
-| `stop_node` | stop + ack | stop + ack, parks | stop + ack | no-op | no-op |
+| `deactivate` | seed: disabled + stopped; transitive dependents: `collateral` + stopped, dependents first | disabled (or `collateral`) + stopped, parks | disabled + stopped, the whole pool when a member is the target; `collateral` as a dependent | re-disabled (idempotent) | skipped, even when targeted |
+| `activate` | enabled + started after its transitive deps; a `collateral` dependent with no disabled dep left is released and restarted in the same wave | enabled + resumed in place | enabled/released only, policy regrows | clears the latch | skipped |
 | `resume_node` | no-op (wrong mode) | reset + resumed in place | no-op | skipped | no-op |
 | `restart` | cycle node + transitive dependents, re-gated on the way up | resumed, never respawned | left down | skipped | skipped |
 | `respawn_terminate` | reset + respawn in dep order | untouched | left down | skipped | skipped |
 | `resume_pausable` | untouched | reset + resumed in place | untouched | skipped | left parked |
 
-Worth knowing: `deactivate` and `activate` are not each other's undo. Each
-looks at the opposite end of the dependency chain. `deactivate(NET)` says
-"NET is going away": every task that needs NET stops with it and stays
-disabled. `activate(UPLOAD)` says "I want UPLOAD running": every task
-UPLOAD needs starts with it. So the way back from `deactivate(NET)` is to
-`activate` one of the tasks that needed NET, not `activate(NET)` itself: a
-task stopped by a cascade stays stopped until you start it again, or start
-something that needs it. Pools work the same way; `Activate` on any member
-brings the whole pool back.
+Worth knowing: the pair is symmetric over a subtree. `deactivate(NET)`
+stops NET's dependents under the `collateral` hold, and `activate(NET)`
+brings the chain back: it clears the latch and releases every held
+dependent with no disabled node left in its dependencies. Released
+`Terminate` and `Pause` nodes restart in the same wave; released
+`OnDemand` pool members are left to the elastic policy. Overlapping
+deactivations compose: a node under two deactivated ancestors comes back
+on the second `activate`, and a node deactivated directly keeps its latch
+through an ancestor's cycle. `start_node` overrides the hold by hand.
 
 ## Stops are a wave, not a loop
 

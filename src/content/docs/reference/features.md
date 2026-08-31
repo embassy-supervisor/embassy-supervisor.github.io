@@ -18,7 +18,7 @@ feature, never a silent behavior change.
 | feature | default | adds |
 |---|:---:|---|
 | `macros` | ✓ | the `supervisor_graph!` declaration macro |
-| `control` | | runtime control plane: `ControlOp`, `request_control`, `try_request_control`, `apply_control` |
+| `control` | | runtime control plane: `ControlOp`, `request_control`, `try_request_control`, `apply_control`; `Deactivate` holds dependents under the `collateral` flag until `Activate` releases them |
 | `pool` | | elastic pools: `ElasticPool`, `run_pools`, `GRAPH.pools` |
 | `local-resources` | | the `local` resource kind. ⚠ opts into the macro emitting a documented `unsafe impl Sync` (single-core contract) |
 | `readiness` | | `set_ready` / `wait_ready` / `clear_ready` and the `ready` dep marker |
@@ -46,7 +46,7 @@ feature, never a silent behavior change.
 A reasonable "most of the model" set for a connected device:
 
 ```toml
-embassy-supervisor = { version = "0.5", features = [
+embassy-supervisor = { version = "0.7", features = [
     "readiness", "liveness-monitor", "control", "pool",
     "coupling-observe", "dataflow", "defmt",
 ] }

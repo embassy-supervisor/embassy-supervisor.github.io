@@ -3,3 +3,7 @@ dist/
 .astro/
 *.log
 .DS_Store
+
+# Playground wasm build
+playground/target/
+src/generated/
