@@ -7,3 +7,6 @@ dist/
 # Playground wasm build
 playground/target/
 src/generated/
+
+# Copied from node_modules by `bun run vendor`
+public/vendor/

@@ -1,0 +1,45 @@
+---
+// Starlight's footer plus a way back into the cookie banner. Withdrawing
+// consent has to be as easy as giving it, and the banner itself is gone once
+// a visitor has chosen, so this link is the only route back to the choice.
+import Default from '@astrojs/starlight/components/Footer.astro';
+import { consentEnabled } from '../lib/consent';
+
+const showPrefs = consentEnabled(Astro.site);
+---
+
+<Default><slot /></Default>
+
+{
+  showPrefs && (
+    <p class="consent-prefs">
+      {/* `data-cc` is vanilla-cookieconsent's own hook: it binds the click
+          itself, so this stays inert if the library failed to load. */}
+      <button type="button" data-cc="show-preferencesModal">
+        Cookie preferences
+      </button>
+    </p>
+  )
+}
+
+<style>
+  .consent-prefs {
+    margin-top: 1rem;
+    font-size: var(--sl-text-xs);
+  }
+
+  .consent-prefs button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--sl-color-gray-3);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+  }
+
+  .consent-prefs button:hover {
+    color: var(--sl-color-white);
+  }
+</style>

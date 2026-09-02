@@ -1,6 +1,7 @@
 ---
 import { Image } from 'astro:assets';
 import Analytics from '../components/Analytics.astro';
+import { consentEnabled } from '../lib/consent';
 import ThemeBootstrap from '../components/ThemeBootstrap.astro';
 import logo from '../assets/logo.svg';
 import '../styles/theme.css';
@@ -414,6 +415,13 @@ flowchart TD
           <a href="https://github.com/cedrivard/embassy-supervisor">GitHub</a>
           <a href="https://crates.io/crates/embassy-supervisor">crates.io</a>
           <a href="https://docs.rs/embassy-supervisor">docs.rs</a>
+          {
+            consentEnabled(Astro.site) && (
+              <button type="button" class="foot-prefs" data-cc="show-preferencesModal">
+                Cookie preferences
+              </button>
+            )
+          }
         </span>
       </footer>
     </div>

@@ -1,29 +1,236 @@
 ---
-// Consent banner (iubenda) and GA4, only on the published site: `astro dev`
-// is not PROD, and a fork building for another `site` fails the host check.
-// Order is load-bearing — autoblocking must see the GA tags before they run.
+// Consent banner (vanilla-cookieconsent, self-hosted) and GA4, only on the
+// published site: `astro dev` is not PROD, and a fork building for another
+// `site` fails the host check.
+//
+// Order is load-bearing, but for a different reason than the old iubenda
+// setup: the Consent Mode defaults have to be in the dataLayer before
+// gtag.js runs, or the first pageview is measured before the visitor has
+// chosen. Nothing here blocks scripts by rewriting tags — GA loads either
+// way and simply stays storage-less until `analytics_storage` is granted.
 const SITE_HOST = 'embassy-supervisor.github.io';
 const enabled =
   import.meta.env.PROD && new URL(Astro.site ?? 'http://localhost').hostname === SITE_HOST;
+
+const GA_ID = 'G-1SHQP5YBQ3';
+// Served from this site, so the policy survives cancelling any vendor account
+// and is versioned alongside the code whose behaviour it describes.
+const COOKIE_POLICY = '/cookies/';
 ---
 
 {
   enabled && (
     <>
-      <script is:inline>
-        var _iub = _iub || [];
-        _iub.csConfiguration = {"siteId":4661075,"cookiePolicyId":18020112,"lang":"en","storage":{"useSiteId":true}};
-      </script>
-      <script is:inline src="https://cs.iubenda.com/autoblocking/4661075.js" />
-      <script is:inline src="//cdn.iubenda.com/cs/gpp/stub.js" />
-      <script is:inline src="//cdn.iubenda.com/cs/iubenda_cs.js" charset="UTF-8" async />
+      <link rel="stylesheet" href="/vendor/cookieconsent.css" />
 
-      <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-1SHQP5YBQ3" />
-      <script is:inline>
+      <script is:inline define:vars={{ GA_ID }}>
         window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
+        // Explicitly global: `define:vars` wraps each of these scripts in an
+        // IIFE, so a plain `function gtag()` would be trapped in this one and
+        // the banner's callback below could not reach it.
+        window.gtag = function () {
+          dataLayer.push(arguments);
+        };
+        // Denied until we know better. `security_storage` is the one
+        // exception: it covers fraud prevention, not measurement, and is not
+        // something a cookie banner asks about.
+        //
+        // `wait_for_update` holds the first hit while the country lookup
+        // below resolves. It has to outlast that request, or a visitor
+        // outside a prior-consent regime is measured as denied before we
+        // ever get to grant them.
+        gtag('consent', 'default', {
+          ad_storage: 'denied',
+          ad_user_data: 'denied',
+          ad_personalization: 'denied',
+          analytics_storage: 'denied',
+          functionality_storage: 'denied',
+          personalization_storage: 'denied',
+          security_storage: 'granted',
+          wait_for_update: 1500,
+        });
         gtag('js', new Date());
-        gtag('config', 'G-1SHQP5YBQ3');
+        gtag('config', GA_ID);
+      </script>
+      <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} />
+
+      <script is:inline src="/vendor/cookieconsent.umd.js" />
+      <script is:inline define:vars={{ COOKIE_POLICY }}>
+        // The only signal this site can grant: there are no ad tags, so the
+        // four ad_* parameters stay denied for everyone, permanently.
+        function syncConsentMode() {
+          gtag('consent', 'update', {
+            analytics_storage: CookieConsent.acceptedCategory('analytics') ? 'granted' : 'denied',
+          });
+        }
+
+        const consentConfig = {
+          guiOptions: {
+            consentModal: { layout: 'box', position: 'bottom right' },
+            preferencesModal: { layout: 'box' },
+          },
+          categories: {
+            necessary: { enabled: true, readOnly: true },
+            analytics: {
+              autoClear: { cookies: [{ name: /^_ga/ }] },
+            },
+          },
+          language: {
+            default: 'en',
+            translations: {
+              en: {
+                consentModal: {
+                  title: 'Cookies on this site',
+                  description:
+                    'This site counts visits with Google Analytics. Nothing is stored in your browser until you agree, and the docs work the same either way.',
+                  acceptAllBtn: 'Accept',
+                  acceptNecessaryBtn: 'Reject',
+                  showPreferencesBtn: 'Manage',
+                  footer: `<a href="${COOKIE_POLICY}" target="_blank" rel="noopener">Cookie policy</a>`,
+                },
+                preferencesModal: {
+                  title: 'Cookie preferences',
+                  acceptAllBtn: 'Accept all',
+                  acceptNecessaryBtn: 'Reject all',
+                  savePreferencesBtn: 'Save choices',
+                  closeIconLabel: 'Close',
+                  sections: [
+                    {
+                      title: 'How this site uses cookies',
+                      description:
+                        'Only two categories exist here. There is no advertising, no profiling and no third-party embedding.',
+                    },
+                    {
+                      title: 'Strictly necessary',
+                      description:
+                        'Remembers the choice you make on this banner. Always on, and cannot be switched off.',
+                      linkedCategory: 'necessary',
+                    },
+                    {
+                      title: 'Analytics',
+                      description:
+                        'Google Analytics, used to count page visits so we know which docs pages get read. Off unless you turn it on.',
+                      linkedCategory: 'analytics',
+                    },
+                    {
+                      title: 'More detail',
+                      description: `Read the full <a href="${COOKIE_POLICY}" target="_blank" rel="noopener">cookie policy</a>.`,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          // `onConsent` covers the first acceptance and every later page load
+          // that replays a stored choice; `onChange` covers a change of mind.
+          // `onFirstConsent` would only duplicate the first of those.
+          onConsent: syncConsentMode,
+          onChange: syncConsentMode,
+        };
+
+        // Where analytics storage needs consent before it is set: the EEA,
+        // plus the UK and Switzerland, which run equivalent regimes. Anywhere
+        // else the model is opt-out, so the banner would be asking a question
+        // the law does not ask.
+        var PRIOR_CONSENT = [
+          'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',
+          'HU', 'IE', 'IS', 'IT', 'LI', 'LT', 'LU', 'LV', 'MT', 'NL', 'NO', 'PL',
+          'PT', 'RO', 'SE', 'SI', 'SK', 'ES', 'GB', 'CH',
+        ];
+
+        // Static hosting has no server to read the source IP from, so the
+        // country comes from Cloudflare's trace endpoint: a plain text body
+        // carrying `loc=XX`, no cookies and no query string. Anything that
+        // goes wrong resolves to null, which we treat as "ask" rather than
+        // "assume" — over-asking costs a banner, under-asking costs consent.
+        // The answer is cached for the tab session. The endpoint replies
+        // `no-store`, so without this every page view would repeat the
+        // request, and a visitor's country cannot change mid-visit anyway.
+        // Session rather than local storage deliberately: a country that
+        // outlived the tab would be wrong the moment someone travels or
+        // switches on a VPN, and it is one less thing persisted uninvited.
+        var LOC_KEY = 'cc_loc';
+        var LOC_UNKNOWN = '??';
+
+        // Storage access throws outright under some privacy settings, so both
+        // sides are guarded: an exception here would take the consent flow
+        // down with it and leave the page with no banner at all.
+        function readCachedCountry() {
+          try {
+            return sessionStorage.getItem(LOC_KEY);
+          } catch (e) {
+            return null;
+          }
+        }
+
+        function cacheCountry(country) {
+          try {
+            sessionStorage.setItem(LOC_KEY, country || LOC_UNKNOWN);
+          } catch (e) {
+            // Not fatal: we just look it up again on the next page.
+          }
+          return country;
+        }
+
+        function lookupCountry() {
+          var cached = readCachedCountry();
+          if (cached) {
+            // A cached failure holds the visitor on the fail-safe path for the
+            // rest of the session instead of retrying, and failing, per page.
+            return Promise.resolve(cached === LOC_UNKNOWN ? null : cached);
+          }
+
+          var control = new AbortController();
+          var timer = setTimeout(function () {
+            control.abort();
+          }, 1200);
+          return fetch('https://www.cloudflare.com/cdn-cgi/trace', { signal: control.signal })
+            .then(function (r) {
+              return r.text();
+            })
+            .then(function (body) {
+              var match = body.match(/^loc=([A-Z]{2})/m);
+              return match ? match[1] : null;
+            })
+            .catch(function () {
+              return null;
+            })
+            .finally(function () {
+              clearTimeout(timer);
+            })
+            .then(cacheCountry);
+        }
+
+        function start(country) {
+          var mustAsk = country === null || PRIOR_CONSENT.indexOf(country) !== -1;
+          consentConfig.autoShow = mustAsk;
+
+          Promise.resolve(CookieConsent.run(consentConfig)).then(function () {
+            // Outside a prior-consent regime, measurement is allowed until the
+            // visitor turns it off. Recording that as an accepted category,
+            // rather than just granting the signal, keeps the footer's
+            // preferences modal showing the state that is actually in force.
+            if (!mustAsk && !CookieConsent.validConsent()) {
+              CookieConsent.acceptCategory('all');
+            }
+          });
+        }
+
+        // Start the lookup now so it overlaps parsing, but mount the banner
+        // only once there is a <body> to mount into: this component renders
+        // inside <head>, and `run` throws on a null body. The consent defaults
+        // above still had to be pushed synchronously, ahead of gtag.js.
+        var country = lookupCountry();
+
+        function boot() {
+          country.then(start);
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', boot);
+        } else {
+          boot();
+        }
       </script>
     </>
   )

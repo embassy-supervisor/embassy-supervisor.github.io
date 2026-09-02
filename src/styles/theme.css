@@ -1117,6 +1117,21 @@ figure.graph .cluster rect {
   color: var(--sup-cyan);
 }
 
+/* Sits among the footer links and has to read as one of them, but it opens
+   the cookie preferences modal rather than navigating, so it stays a button. */
+.home-foot .foot-prefs {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.home-foot .foot-prefs:hover {
+  color: var(--sup-cyan);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

@@ -66,6 +66,7 @@ export default defineConfig({
       customCss: ['./src/styles/theme.css'],
       components: {
         Head: './src/components/Head.astro',
+        Footer: './src/components/Footer.astro',
       },
       sidebar: [
         {
