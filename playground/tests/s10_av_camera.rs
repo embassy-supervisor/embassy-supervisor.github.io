@@ -69,7 +69,7 @@ const BEHAVIORS: &str = r#"{
     "VENC_PRIMARY": { "kind": "pipeline", "work_ms": 120 },
     "PTP_SERVO": { "kind": "control_loop", "period_ms": 400 },
     "AV_TIMESTAMPER": { "kind": "pipeline", "work_ms": 100 },
-    "SESSION_Q": { "kind": "queue", "capacity": 8, "policy": "drop_oldest", "drain_ms": 150 },
+    "SESSION_Q": { "kind": "queue", "capacity": 8, "policy": "drop_oldest", "drain_ms": 100 },
     "RTP_SESSION": { "kind": "session", "busy_ms": 300 }
 }"#;
 

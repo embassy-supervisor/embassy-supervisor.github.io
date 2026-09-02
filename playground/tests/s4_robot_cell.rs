@@ -58,7 +58,7 @@ const BEHAVIORS: &str = r#"{
     "nodes": {
         "PENDANT": { "kind": "periodic", "period_ms": 500 },
         "IK_SOLVER": { "kind": "pipeline", "work_ms": 300 },
-        "SEGMENT_Q": { "kind": "queue", "capacity": 8, "policy": "backpressure", "drain_ms": 700 },
+        "SEGMENT_Q": { "kind": "queue", "capacity": 8, "policy": "backpressure", "drain_ms": 600 },
         "ECAT_MASTER": { "kind": "provider", "startup_ms": 900 },
         "COARSE_INTERP": { "kind": "control_loop", "period_ms": 150 },
         "LIMIT_ENFORCER": { "kind": "control_loop", "period_ms": 150 },
@@ -204,15 +204,22 @@ fn sto_cascade_and_starvation() {
 
     // Full feed: joints arrive faster than the queue drains, so it fills to
     // capacity and back-pressures — the unconsumed backlog piles up at the
-    // producer instead of segments being dropped.
-    // The admit and the drain share one wake, so the depth observable
-    // between cycles tops out one under capacity.
+    // producer instead of segments being dropped. The drain is a rate, so
+    // the fill is the difference of two close rates: wait for the queue to
+    // say it is refusing before reading the producer's side.
     assert!(
-        settle(|| depth_of("signals::SEGMENTS") >= 7, 30000),
+        settle(|| depth_of("signals::SEGMENTS") >= 7, 60000),
         "the segment queue fills to capacity"
     );
+    assert!(
+        settle(
+            || by_name("SEGMENT_Q").node.status() == Some("full: back-pressuring"),
+            30000
+        ),
+        "and back-pressures rather than dropping"
+    );
     let gap = writes_of("signals::JOINTS") - reads_of("signals::JOINTS");
-    advance_ms(3000);
+    advance_ms(6000);
     assert!(
         depth_of("signals::SEGMENTS") <= 8,
         "back-pressure bounds the queue"

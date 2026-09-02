@@ -147,7 +147,9 @@ servo carries `ready_on_write`, so its first command equals its first
 measured position.
 
 Try: crash the pendant. Segments starve but the interpolator holds last-good
-and setpoints keep flowing. Stall a safety channel and STO asserts as a
+and setpoints keep flowing. Push the camera rate past what the frame pool
+drains and it rejects; stop the logger and the telemetry ring fills in a
+blink, dropping oldest. Stall a safety channel and STO asserts as a
 **bound cascade**: readiness withdrawn, safety IO stops, the limit enforcer
 follows, the servos stop. Restart the channel and the same edges bring the
 plane back in order.

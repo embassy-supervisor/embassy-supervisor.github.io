@@ -24,6 +24,7 @@ export default function PlaygroundApp() {
   const wasmRef = useRef<Wasm | null>(null);
   const rafRef = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const busyRef = useRef<boolean>(false);
   const lastFrameRef = useRef<number>(0);
   const speedRef = useRef<number>(1);
   const prevWritesRef = useRef<Map<string, number>>(new Map());
@@ -134,14 +135,27 @@ export default function PlaygroundApp() {
     setSnapshot(snap);
   }, []);
 
+  // Cap each virtual clock step so timers with different periods fire on
+  // their own ticks instead of bunching up against the frame delta.
+  const SLICE_US = 25_000;
+
   const advance = useCallback(
-    (t: number) => {
+    async (t: number) => {
       const w = wasmRef.current;
       if (!w) return;
       const dt = Math.min(t - (lastFrameRef.current || t), 100);
       lastFrameRef.current = t;
       if (speedRef.current > 0 && dt > 0) {
-        w.tick(dt * 1000 * speedRef.current);
+        let left = dt * 1000 * speedRef.current;
+        while (left > 0) {
+          const slice = Math.min(left, SLICE_US);
+          w.tick(slice);
+          left -= slice;
+          if (left > 0) {
+            await Promise.resolve();
+            await Promise.resolve();
+          }
+        }
       }
       drainFrame();
     },
@@ -150,7 +164,14 @@ export default function PlaygroundApp() {
 
   const loop = useCallback(
     (t: number) => {
-      advance(t);
+      // A slow frame must not overlap the next one: skip instead, and the
+      // dt cap folds the skipped time into the following frame.
+      if (!busyRef.current) {
+        busyRef.current = true;
+        void advance(t).finally(() => {
+          busyRef.current = false;
+        });
+      }
       rafRef.current = requestAnimationFrame(loop);
     },
     [advance],
@@ -163,7 +184,7 @@ export default function PlaygroundApp() {
     // time moving (coarsely) there instead of silently freezing the run.
     intervalRef.current = setInterval(() => {
       const now = performance.now();
-      if (now - lastFrameRef.current > 220) advance(now);
+      if (now - lastFrameRef.current > 220) void advance(now);
     }, 250);
   }, [loop, advance]);
 
@@ -321,10 +342,18 @@ export default function PlaygroundApp() {
     [snapshot],
   );
 
-  const step = useCallback(() => {
+  const step = useCallback(async () => {
     const w = wasmRef.current;
     if (!w || phase === 'idle') return;
-    w.tick(100_000);
+    for (let left = 100_000; left > 0; ) {
+      const slice = Math.min(left, SLICE_US);
+      w.tick(slice);
+      left -= slice;
+      if (left > 0) {
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+    }
     drainFrame();
   }, [phase, drainFrame]);
 
@@ -511,7 +540,7 @@ export default function PlaygroundApp() {
           <button className={speed === 10 ? 'on' : ''} onClick={() => setSpeed(10)} title="Fast-forward">
             10×
           </button>
-          <button onClick={step} disabled={!running || speed !== 0} title="Step 100 ms">
+          <button onClick={() => void step()} disabled={!running || speed !== 0} title="Step 100 ms">
             +100ms
           </button>
           <span className="pg-clock" title="Virtual clock (mock time driver)">

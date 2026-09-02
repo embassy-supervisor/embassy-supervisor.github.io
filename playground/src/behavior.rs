@@ -70,9 +70,9 @@ pub enum BehaviorSpec {
     /// link; the load dial stretches the transaction until the member calls
     /// for help (`mark_busy`), growing the pool.
     Poller { period_ms: u64, txn_ms: u64 },
-    /// A bounded staging buffer with an explicit overflow policy; depth is
-    /// published on its first `writes:` signal, and it drains only while a
-    /// consumer of that signal is running.
+    /// Bounded staging buffer. Depth is published on the first write.
+    /// `drain_ms` is the per-consumer service time, so drain rate scales
+    /// with the number of active readers.
     Queue {
         capacity: u32,
         policy: OverflowPolicy,
@@ -93,8 +93,7 @@ pub enum BehaviorSpec {
     /// dealt out across the running members (see [`session_wanted`]); busy
     /// for the session's duration.
     Session { busy_ms: u64 },
-    /// Fixed-rate loop that holds last-good output instead of dying when its
-    /// input goes quiet for two consecutive periods.
+    /// Fixed-rate loop. Holds last-good output when the input goes quiet.
     ControlLoop { period_ms: u64 },
     /// Detached run-once: reports, then returns without ever being respawned.
     Selftest { run_ms: u64 },
@@ -306,19 +305,22 @@ async fn wait_wedge(rt: &'static NodeRt) {
     }
 }
 
-/// True while any consumer of `sig` is running — a queue drains only as fast
-/// as something downstream takes from it.
-fn readers_running(sig: &'static SignalRt) -> bool {
-    let mut any_reader = false;
+/// Count active consumers of `sig`. Queue drain rate scales with this.
+/// Session members count only while open; an unread signal counts as one sink.
+fn running_readers(sig: &'static SignalRt) -> u32 {
+    let mut declared = 0u32;
+    let mut active = 0u32;
     for rt in registry::nodes() {
         if rt.reads.iter().any(|s| std::ptr::eq(*s, sig)) {
-            any_reader = true;
-            if rt.node.is_running() {
-                return true;
+            declared += 1;
+            let open = !matches!(rt.behavior, Behavior::Session { .. })
+                || rt.session_open.load(Ordering::Relaxed);
+            if rt.node.is_running() && open {
+                active += 1;
             }
         }
     }
-    !any_reader
+    if declared == 0 { 1 } else { active }
 }
 
 /// This node's pool siblings, itself included; just itself for a plain node.
@@ -518,8 +520,8 @@ async fn body(rt: &'static NodeRt) {
                     }
                     rt.node.beat();
                     if *scaled {
-                        acc += input_f32(rt);
-                        if acc >= 1.0 {
+                        acc = (acc + input_f32(rt)).clamp(0.0, 16.0);
+                        while acc >= 1.0 {
                             acc -= 1.0;
                             write_all(rt);
                         }
@@ -647,16 +649,29 @@ async fn body(rt: &'static NodeRt) {
                 .map(|s| s.depth.load(Ordering::Relaxed))
                 .unwrap_or(0);
             let mut lost = 0u32;
+            // Track elapsed time, not wakes, so a late wake settles all
+            // owed service at once.
+            let mut last = Instant::now();
+            let mut credit_ms = 0u64;
+            // Wake on a fixed cadence; drain rate scales with active readers.
+            let tick_ms = (*drain_ms).clamp(50, 250);
+            // Latch overload until the queue has real room, so the status
+            // does not flicker.
+            let mut hot = false;
             loop {
-                Timer::after_millis(*drain_ms).await;
+                Timer::after_millis(tick_ms).await;
                 if exit_requested(rt) {
                     return;
                 }
                 if stalled(rt) {
+                    last = Instant::now();
                     continue;
                 }
                 rt.node.beat();
-                // Admit arrivals one by one, applying the overflow policy.
+                let now = Instant::now();
+                let elapsed_ms = now.saturating_duration_since(last).as_millis();
+                last = now;
+                // Admit arrivals until full, then apply the overflow policy.
                 let mut overflowed = false;
                 for (s, mark) in rt.reads.iter().zip(&rt.read_marks) {
                     let w = s.writes.load(Ordering::Relaxed);
@@ -666,13 +681,8 @@ async fn body(rt: &'static NodeRt) {
                         } else {
                             overflowed = true;
                             match policy {
-                                // Full: never block the producer; the arrival
-                                // is refused and counted.
                                 OverflowPolicy::Reject => lost += 1,
-                                // Full: stop consuming; the backlog is the
-                                // producer's problem now.
                                 OverflowPolicy::Backpressure => break,
-                                // Full: the arrival enters, the oldest is lost.
                                 OverflowPolicy::DropOldest => lost += 1,
                             }
                         }
@@ -680,27 +690,47 @@ async fn body(rt: &'static NodeRt) {
                         s.reads.fetch_add(1, Ordering::Relaxed);
                     }
                 }
-                // Drain toward whoever consumes our output; a down consumer
-                // leaves the backlog standing.
+                // Drain one item per active consumer per service time.
                 if depth > 0
                     && let Some(out) = depth_sig
-                    && readers_running(out)
                 {
-                    depth -= 1;
-                    write_all(rt);
+                    let readers = u64::from(running_readers(out));
+                    credit_ms += elapsed_ms * readers;
+                    let take = (credit_ms / *drain_ms).min(u64::from(depth)) as u32;
+                    // An idle server banks nothing: at most a fraction of
+                    // one item carries over.
+                    credit_ms = (credit_ms - u64::from(take) * *drain_ms).min(*drain_ms);
+                    depth -= take;
+                    for _ in 0..take {
+                        write_all(rt);
+                    }
+                } else {
+                    credit_ms = 0;
                 }
                 set_depth(depth);
                 // The full-state wording follows the policy — a ring at
-                // capacity is operating as designed, not overflowing — and
-                // keys on this cycle actually hitting the cap: at steady
-                // state the drain leaves depth one under it.
-                node.report_status(if overflowed {
+                // capacity is operating as designed, not overflowing.
+                let was_hot = hot;
+                hot = overflowed || (hot && depth + 1 >= *capacity);
+                if was_hot && !hot && lost > 0 {
+                    log::info!(
+                        "{}: overload over, {} {}",
+                        node.name(),
+                        lost,
+                        match policy {
+                            OverflowPolicy::DropOldest => "dropped",
+                            _ => "rejected",
+                        }
+                    );
+                    lost = 0;
+                }
+                node.report_status(if hot {
                     match policy {
                         OverflowPolicy::Reject => "overflowing: rejecting",
                         OverflowPolicy::Backpressure => "full: back-pressuring",
                         OverflowPolicy::DropOldest => "ring full: dropping oldest",
                     }
-                } else if lost > 0 || depth * 10 >= *capacity * 8 {
+                } else if depth * 10 >= *capacity * 8 {
                     "backlog"
                 } else {
                     "staging"
@@ -818,6 +848,8 @@ async fn body(rt: &'static NodeRt) {
             let mut last_good = 0.0f32;
             let mut fresh = false;
             let mut missed = 0u32;
+            let mut gaps = [1u32; 8];
+            let mut seen = false;
             loop {
                 Timer::after_millis(*period_ms).await;
                 if exit_requested(rt) {
@@ -829,10 +861,12 @@ async fn body(rt: &'static NodeRt) {
                 rt.node.beat();
                 // A fixed-rate loop never skips an output: with fresh input
                 // it tracks, without it holds last-good instead of dying.
-                // Input is stale only after two empty periods: a producer
-                // slower than this loop leaves single gaps every cycle, and
-                // flipping status on each would flood the log with churn.
                 if read_new(rt) {
+                    if seen {
+                        gaps.rotate_right(1);
+                        gaps[0] = missed + 1;
+                    }
+                    seen = true;
                     missed = 0;
                     last_good = rt
                         .reads
@@ -845,7 +879,8 @@ async fn body(rt: &'static NodeRt) {
                     }
                 } else {
                     missed += 1;
-                    if fresh && missed >= 2 {
+                    let cadence = gaps.iter().copied().max().unwrap_or(1);
+                    if fresh && missed >= (3 * cadence).max(2) {
                         fresh = false;
                         node.report_status("holding last-good");
                     }

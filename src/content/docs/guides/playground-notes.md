@@ -15,9 +15,12 @@ Three things differ from firmware.
 ## Virtual time
 
 The clock is embassy-time's mock driver: time advances only when the page
-advances it, which is what the pause / 1× / 10× / step controls drive. Runs
-are deterministic and scrubbable, and timings model an MCU's *ordering*, not
-its microseconds. Nothing here measures poll latency; the
+advances it, which is what the pause / 1× / 10× / step controls drive. It
+advances in slices no coarser than 25 ms whatever the multiplier, so a 100 ms
+timer and a 500 ms timer never come due on the same poll: fast-forward
+compresses the wall clock, not the ratios between the rates you declared.
+Runs are deterministic and scrubbable, and timings model an MCU's *ordering*,
+not its microseconds. Nothing here measures poll latency; the
 [tracing guide](/concepts/trace/) covers that on hardware.
 
 ## Simulated task bodies
@@ -35,7 +38,9 @@ add new nodes. The workers drive the real task-side APIs: `beat()`,
 A `queue` behavior carries an explicit overflow policy (`reject`,
 `backpressure`, or `drop_oldest`) because the right answer depends on the
 other side: back-pressure what can slow down, drop what is driven by a clock
-you cannot pause. Stale reports are answered by the scenario's escalation map
+you cannot pause. It drains one item per running consumer per tick, so the
+service rate is set by whoever takes from it: a backlog clears only once the
+readers outpace the producer, and stands while none of them runs. Stale reports are answered by the scenario's escalation map
 (`report`, `clear_ready`, `restart`, `deactivate`, `activate:OTHER`): the
 liveness monitor only reports, the application decides.
 
@@ -59,8 +64,9 @@ A `session` member routes the next client to whichever running member is
 idle, not by member number. The spare left by a shrink serves the next car,
 so the pool scales out again. A dial step down closes the highest-numbered
 session and never migrates a live one. A `control_loop` holds last-good only
-after two empty periods, because a producer slower than the loop leaves
-single gaps every cycle that are not news.
+once its input has been quiet for several times the producer's own cadence
+(learned from the gaps between fresh reads, never under two periods), because
+a producer slower than the loop leaves a gap every cycle that is not news.
 
 ## What executes
 
