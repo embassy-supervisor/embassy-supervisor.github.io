@@ -42,6 +42,11 @@ export default function PlaygroundApp() {
   const [editorHidden, setEditorHidden] = useState(false);
   const [rebootCount, setRebootCount] = useState(0);
   const [rebooted, setRebooted] = useState(false);
+  // Bumped on every run and reset: the device widgets hold their own
+  // positions, and a re-run seeds the simulation from each device's
+  // `initial`, so they must remount or the first click would write the
+  // value the simulation already holds.
+  const [runGen, setRunGen] = useState(0);
 
   speedRef.current = speed;
 
@@ -164,6 +169,7 @@ export default function PlaygroundApp() {
 
   const reset = useCallback(async () => {
     stopLoop();
+    setRunGen((g) => g + 1);
     setPhase('loading');
     setSnapshot(null);
     setLogs([]);
@@ -183,6 +189,7 @@ export default function PlaygroundApp() {
   const run = useCallback(async () => {
     stopLoop();
     setRebooted(false);
+    setRunGen((g) => g + 1);
     // Statics are never reset in place: every run gets a fresh instance.
     setSnapshot(null);
     setLogs([]);
@@ -561,6 +568,7 @@ export default function PlaygroundApp() {
 
       <section className="pg-pane pg-devices" aria-label="Virtual device">
         <DevicePane
+          key={runGen}
           devices={scenario.devices}
           snapshot={running ? snapshot : null}
           faults={faults}

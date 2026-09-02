@@ -21,15 +21,17 @@ feature, never a silent behavior change.
 | `control` | | runtime control plane: `ControlOp`, `request_control`, `try_request_control`, `apply_control`; `Deactivate` holds dependents under the `collateral` flag until `Activate` releases them |
 | `pool` | | elastic pools: `ElasticPool`, `run_pools`, `GRAPH.pools` |
 | `local-resources` | | the `local` resource kind. ⚠ opts into the macro emitting a documented `unsafe impl Sync` (single-core contract) |
+| `budget` | | the `divisible` resource kind: a graph-sized `Budget<K>`, a `Claimant` per holder, allocator-side `rebalance` under a `BudgetPolicy` (`FairShare`, `ShrinkFastGrowSlow`), and a stopped holder's share released by the supervisor (missed ack included; a `Pause` park keeps it) |
 | `readiness` | | `set_ready` / `wait_ready` / `clear_ready` and the `ready` dep marker |
 | `liveness` | | per-node heartbeat: `beat()`, `ticks_since_beat()`, `is_stale()` |
 | `liveness-monitor` | | the sweep: `beat_timeout:` / `beat_window:`, `wait_health()`, `HealthEvent`. Report-only. Implies `liveness` |
 | `epochs` | | per-node activation generation: `epoch()`, `wait_epoch_change(seen)` |
-| `coupling` | | declared dataflow: `reads:` / `writes:` and the signal-indexed queries |
+| `coupling` | | declared dataflow: `reads:` / `writes:` and the signal-indexed queries; `Stamped<T>` for read-side write-freshness checks |
 | `coupling-observe` | `coupling` | the `observed` marker and its accessor; with `liveness-monitor`, `beat` drives the heartbeat and `ready_on_write` by polling |
 | `dataflow` | `coupling` | the node as the access path: `#[dataflow]`, `discover`, `dataflow: [..]`, verbs of your own; `beat_put` / `beat_writer` (need `liveness` too) |
 | `graph-ref` | | the graph as one addressable `'static` (`GraphRef`); the handle `data-deps` and `trace` need |
-| `data-deps` | `graph-ref` + `dataflow` | gated reads (`Backed`, `open`, `producer_of`) and leases (`Leased`, `lease`, `drain`) |
+| `veto` | `dataflow` | the `veto` write marker: one contributor slot of a `VetoGate<N>` per writer, numbered and capacity-checked by the macro; `node.veto(&SIG)` moves only that writer's bit, and a stopped writer's bit stays asserted |
+| `data-deps` | `graph-ref` + `dataflow` | gated reads (`Backed`, the counted `Open` guard, `retire`, `producer_of`) and leases (`Leased`, `lease`, `drain`) |
 | `node-status` | | `report_status()` / `status()`: a one-line self-description per node |
 | `restart` | | `Supervisor::restart`: cycle a node and its transitive dependents, re-gated. Implies `control` |
 | `bound-deps` | | the `bound` dep marker: `clear_ready()` stops a bound dependent. ⚠ the one feature that changes a documented contract. Implies `readiness` + `control` |
@@ -46,7 +48,7 @@ feature, never a silent behavior change.
 A reasonable "most of the model" set for a connected device:
 
 ```toml
-embassy-supervisor = { version = "0.7", features = [
+embassy-supervisor = { version = "0.8", features = [
     "readiness", "liveness-monitor", "control", "pool",
     "coupling-observe", "dataflow", "defmt",
 ] }

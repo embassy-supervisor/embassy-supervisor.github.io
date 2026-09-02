@@ -196,6 +196,7 @@ fn signal_refs(
                 name: s.path.clone(),
                 observed: s.observed || s.via.is_some(),
                 beat: s.beat,
+                veto: s.veto,
             }
         })
         .collect()
@@ -240,10 +241,20 @@ fn resource_models(
                     "`local` marker: single-core wasm treats it as plain",
                 );
             }
+            if r.serialized {
+                badge(
+                    badges,
+                    item,
+                    "resources:",
+                    "`serialized`: a compile-time rule (every holder on one executor); the playground's executors all poll on one thread anyway",
+                );
+            }
             ResourceModel {
                 name: r.name.clone(),
                 consume: r.consume,
                 shared: r.shared,
+                divisible: r.divisible,
+                serialized: r.serialized,
             }
         })
         .collect()
@@ -441,6 +452,7 @@ fn build_model(
         return None;
     }
 
+    check_resource_kinds(&nodes, g.line, errors);
     let signals = collect_signals(&nodes, g.line, errors)?;
     let order = kahn_order(&nodes, &pools, g.line, errors)?;
 
@@ -593,6 +605,27 @@ fn build_pool(
     });
 }
 
+/// The real macro unifies a `divisible` name across its holders like a
+/// `shared` one and refuses to let it double as a take-kind slot; the
+/// builder relies on the same invariant when it sizes one `Budget` per name.
+fn check_resource_kinds(nodes: &[NodeModel], line: usize, errors: &mut Vec<ParseError>) {
+    let mut divisible: BTreeMap<&str, bool> = BTreeMap::new();
+    for n in nodes {
+        for r in &n.resources {
+            let prev = divisible.entry(&r.name).or_insert(r.divisible);
+            if *prev != r.divisible {
+                errors.push(ParseError {
+                    line,
+                    msg: format!(
+                        "{}: `{}` is declared `divisible` by one holder and as a slot by another; a budget cannot double as a slot",
+                        n.name, r.name
+                    ),
+                });
+            }
+        }
+    }
+}
+
 fn collect_signals(
     nodes: &[NodeModel],
     line: usize,
@@ -624,7 +657,26 @@ fn collect_signals(
                 }
                 m.observed |= s.observed;
                 m.beat |= s.beat;
+                if write && s.veto {
+                    m.veto = true;
+                    if !m.veto_writers.contains(&n.name) {
+                        m.veto_writers.push(n.name.clone());
+                    }
+                }
             }
+        }
+    }
+    for m in map.values() {
+        if m.veto_writers.len() > MAX_VETO_SLOTS {
+            errors.push(ParseError {
+                line,
+                msg: format!(
+                    "`{}`: a veto gate holds at most {MAX_VETO_SLOTS} contributor bits; this graph declares {} veto writers",
+                    m.name,
+                    m.veto_writers.len()
+                ),
+            });
+            return None;
         }
     }
     if order.len() > MAX_SIGNALS {

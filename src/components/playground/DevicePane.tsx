@@ -58,11 +58,17 @@ function Dial({ d, running, onInput }: { d: DeviceSpec; running: boolean; onInpu
   const integral = Number.isInteger(min) && Number.isInteger(max) && max - min <= 8;
   const step = integral ? 1 : (max - min) / 8;
   const [v, setV] = useState(d.initial ?? min);
+  // Clicks landing inside one React batch all see the same rendered `v`;
+  // stepping from the last value written keeps three fast clicks three
+  // detents, and keeps the simulation in step with the readout.
+  const last = useRef(v);
   const set = (nv: number) => {
     const clamped = Math.min(max, Math.max(min, nv));
+    last.current = clamped;
     setV(clamped);
     onInput(d.target, clamped);
   };
+  const step_ = (dir: 1 | -1) => set(last.current + dir * step);
   const frac = (v - min) / (max - min || 1);
   const angle = -120 + frac * 240;
   return (
@@ -75,7 +81,7 @@ function Dial({ d, running, onInput }: { d: DeviceSpec; running: boolean; onInpu
         </output>
       </span>
       <div className="pg-dial-row">
-        <button className="pg-dial-step" disabled={!running || v <= min} onClick={() => set(v - step)} aria-label={`${d.label} down`}>
+        <button className="pg-dial-step" disabled={!running || v <= min} onClick={() => step_(-1)} aria-label={`${d.label} down`}>
           −
         </button>
         <div
@@ -87,17 +93,17 @@ function Dial({ d, running, onInput }: { d: DeviceSpec; running: boolean; onInpu
           aria-label={d.label}
           tabIndex={0}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowUp' || e.key === 'ArrowRight') set(v + step);
-            if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') set(v - step);
+            if (e.key === 'ArrowUp' || e.key === 'ArrowRight') step_(1);
+            if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') step_(-1);
           }}
           onWheel={(e) => {
             if (!running) return;
-            set(v + (e.deltaY < 0 ? step : -step));
+            step_(e.deltaY < 0 ? 1 : -1);
           }}
         >
           <span className="pg-dial-needle" style={{ transform: `rotate(${angle}deg)` }} />
         </div>
-        <button className="pg-dial-step" disabled={!running || v >= max} onClick={() => set(v + step)} aria-label={`${d.label} up`}>
+        <button className="pg-dial-step" disabled={!running || v >= max} onClick={() => step_(1)} aria-label={`${d.label} up`}>
           +
         </button>
       </div>
@@ -108,6 +114,7 @@ function Dial({ d, running, onInput }: { d: DeviceSpec; running: boolean; onInpu
 
 function Switch({ d, running, onInput }: { d: DeviceSpec; running: boolean; onInput: Props['onInput'] }) {
   const [on, setOn] = useState((d.initial ?? 1) >= 0.5);
+  const last = useRef(on);
   return (
     <div className="pg-device">
       <span className="pg-device-label">{d.label}</span>
@@ -117,7 +124,8 @@ function Switch({ d, running, onInput }: { d: DeviceSpec; running: boolean; onIn
         className={`pg-switch ${on ? 'on' : ''}`}
         disabled={!running}
         onClick={() => {
-          const next = !on;
+          const next = !last.current;
+          last.current = next;
           setOn(next);
           onInput(d.target, next ? 1 : 0);
         }}
@@ -171,14 +179,25 @@ function ActionButton({
   );
 }
 
-/** Read-only readout bound to a signal's value or queue depth. */
+/** Read-only readout bound to a signal's value or queue depth, a node's
+ *  budget grant, or a budget's granted total / capacity. */
 function Gauge({ d, snapshot }: { d: DeviceSpec; snapshot: Snapshot | null }) {
-  const sig = snapshot?.signals.find((s) => s.name === d.target);
-  const raw = d.source === 'depth' ? (sig?.depth ?? 0) : (sig?.value ?? 0);
+  const source = d.source ?? 'value';
+  let raw = 0;
+  if (source === 'grant') {
+    raw = snapshot?.nodes.find((n) => n.name === d.target)?.grant ?? 0;
+  } else if (source === 'granted' || source === 'capacity') {
+    const res = snapshot?.resources.find((r) => r.name === d.target);
+    raw = (source === 'granted' ? res?.granted : res?.capacity) ?? 0;
+  } else {
+    const sig = snapshot?.signals.find((s) => s.name === d.target);
+    raw = source === 'depth' ? (sig?.depth ?? 0) : (sig?.value ?? 0);
+  }
+  const integer = source !== 'value';
   const min = d.min ?? 0;
-  const max = d.max ?? (d.source === 'depth' ? 16 : 1);
+  const max = d.max ?? (source === 'depth' ? 16 : 1);
   const frac = Math.min(1, Math.max(0, (raw - min) / (max - min || 1)));
-  const shown = d.source === 'depth' || max - min > 4 ? Math.round(raw) : raw.toFixed(2);
+  const shown = integer || max - min > 4 ? Math.round(raw) : raw.toFixed(2);
   return (
     <div className="pg-device pg-gauge-device">
       <span className="pg-device-label">
@@ -283,7 +302,15 @@ export default function DevicePane({
                 <li key={r.name}>
                   <span className={`pg-res-dot ${r.filled ? 'filled' : ''}`} /> {r.name}
                   <span className="pg-res-kind">{r.kind}</span>
-                  <em>{r.held_by ? `lent to ${r.held_by}` : r.filled ? 'provided' : 'empty'}</em>
+                  <em>
+                    {r.held_by
+                      ? `lent to ${r.held_by}`
+                      : r.capacity != null && r.filled
+                        ? `${r.granted} of ${r.capacity} granted · ${r.claimants} claiming`
+                        : r.filled
+                          ? 'provided'
+                          : 'empty'}
+                  </em>
                   {!r.filled && !r.held_by && (
                     <button
                       className="pg-res-provide"

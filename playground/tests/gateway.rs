@@ -120,7 +120,6 @@ fn gateway_runs() {
 
     // The provider actually filled its slot; a shared handle stays filled
     // while its takers run.
-    use embassy_supervisor::ResourceGate;
     let net_stack = registry::resources()
         .iter()
         .find(|r| r.name == "NET_STACK")

@@ -63,7 +63,8 @@ slots its spawn takes, the readiness it waits on, the slots a stop clears.
   touches nothing else. With `--watch`, the file follows the source as you
   edit. This is how a README keeps a current picture of its graph.
 - `--json`: the graph model (nodes, deps, resources, signals, scanned
-  accesses) for anything that is not a diagram.
+  accesses; signals carry their `veto` marker, resources their `divisible`
+  and `serialized` kinds) for anything that is not a diagram.
 
 Layout help on bigger graphs: `--layout elk`, `--max-fanout 6` to collapse a
 widely-read signal into one aggregate box, `--legend` for a key,
@@ -98,6 +99,11 @@ signal is often a real, accepted absence (an input this target has no
 producer for, a telemetry tap nothing consumes yet), so `--allow` names the
 accepted ones in the invocation, where it gets reviewed like code. An
 `--allow` entry that no longer suppresses anything is itself reported.
+
+`public-gate` is the third finding: a `Backed`, `Leased` or `VetoGate`
+static that is not private. Gates guard the access path, not the data; the
+module boundary is what makes bypass deliberate (see
+[Gated reads and leases](/concepts/data-deps/)).
 
 `observed`/`beat` entries are exempt from dead-write findings by design:
 their consumer is the supervisor.

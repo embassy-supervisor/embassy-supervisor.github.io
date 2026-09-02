@@ -107,6 +107,11 @@ different products:
   reporting ready does not pin the reader; a user-implemented
   `Gated::ensure` can layer any other policy on top, including a wedge
   check.
+- **Split one quantity without stranding it.** A `divisible` resource gives
+  each holder a slot in a graph-sized budget; the allocator re-divides as
+  holders come and go, and a stopped holder's share is released for the
+  rest. A `veto` write latches a fail-safe state until every contributor
+  has let go.
 - **Wake briefly, publish, sleep.** One or more drivers park in `Pause`
   holding a resource, so the next wake is a millisecond resume rather
   than a cold reinit.

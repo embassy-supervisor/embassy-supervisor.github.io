@@ -11,6 +11,8 @@ use serde::Serialize;
 /// pool; `MAX_SIGNALS` bounds the observer fn table.
 pub const MAX_NODES: usize = 48;
 pub const MAX_SIGNALS: usize = 64;
+/// Contributor bits per veto gate: `VetoGate<N>` caps `N` at a `u32`'s width.
+pub const MAX_VETO_SLOTS: usize = 32;
 
 #[derive(Serialize, Clone)]
 pub struct ParseError {
@@ -39,6 +41,10 @@ pub struct ResourceModel {
     pub name: String,
     pub consume: bool,
     pub shared: bool,
+    /// `divisible`: a budget the holder claims a share of, not a slot.
+    pub divisible: bool,
+    /// `serialized`: every holder runs on one executor (macro-checked).
+    pub serialized: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -47,6 +53,8 @@ pub struct SignalRef {
     pub name: String,
     pub observed: bool,
     pub beat: bool,
+    /// `veto` on a write: this writer holds a contributor bit of the gate.
+    pub veto: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -92,6 +100,11 @@ pub struct SignalModel {
     pub readers: Vec<String>,
     pub observed: bool,
     pub beat: bool,
+    /// Some writer carries `veto`: the signal runs as a `VetoGate`.
+    pub veto: bool,
+    /// The writers carrying `veto`, in declaration order: their contributor
+    /// bits are numbered by this order, as the macro numbers them.
+    pub veto_writers: Vec<String>,
 }
 
 #[derive(Serialize, Clone)]

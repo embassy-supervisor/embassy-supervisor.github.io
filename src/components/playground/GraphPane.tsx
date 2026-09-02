@@ -177,6 +177,11 @@ function SupNode({ data }: NodeProps<Node<SupData>>) {
         </div>
         <span className="pg-node-chips">
           <span className={`chip chip-${data.mode}`}>{data.mode}</span>
+          {snap?.grant != null && (
+            <span className="chip chip-grant" title="budget share: granted / wanted units">
+              {snap.grant}/{snap.want}
+            </span>
+          )}
           {snap?.detached && (
             <span className="chip chip-detached" title="self-managed: teardown and respawn skip it">
               detached
@@ -296,7 +301,12 @@ function PoolNode({ data }: NodeProps<Node<PoolData>>) {
           </select>
         </div>
       )}
-      <div className="pg-pool-meter" title={`running ${running} (busy ${busy}) of min ${min} / max ${max}`}>
+      <div
+        className="pg-pool-meter"
+        title={`running ${running} (busy ${busy}) of min ${min} / max ${max}${
+          running > busy ? ` · ${running - busy} idle: DeferredShrink keeps one idle spare and shrinks only past it` : ''
+        }`}
+      >
         <span className="pg-pool-range">
           min {min} · max {max}
         </span>
@@ -306,7 +316,7 @@ function PoolNode({ data }: NodeProps<Node<PoolData>>) {
   );
 }
 
-type SigData = { name: string; observed: boolean; beat: boolean };
+type SigData = { name: string; observed: boolean; beat: boolean; veto: boolean };
 
 function SigNode({ data }: NodeProps<Node<SigData>>) {
   const live = useContext(LiveContext);
@@ -321,6 +331,11 @@ function SigNode({ data }: NodeProps<Node<SigData>>) {
         {tail}
         {kind !== 'plain' && <span className="pg-sig-kind">{kind}</span>}
         {data.beat && <span className="pg-sig-flag" title="observed writes beat the writer">beat</span>}
+        {data.veto && kind !== 'veto' && (
+          <span className="pg-sig-flag pg-sig-flag-veto" title="a veto gate: any writer's bit forces the safe state">
+            veto
+          </span>
+        )}
       </div>
       <div className="pg-sig-stats">
         <span title="writes">w {s?.writes ?? 0}</span>
@@ -329,6 +344,16 @@ function SigNode({ data }: NodeProps<Node<SigData>>) {
           <span className={`pg-leases ${s.drained ? 'drained' : ''}`} title="live leases">
             ⛓ {s.leases}
             {s.drained ? ' drained' : ''}
+          </span>
+        )}
+        {s?.openers != null && (
+          <span className="pg-openers" title="live Open guards: the producer can retire once this reaches 0">
+            ⊙ {s.openers}
+          </span>
+        )}
+        {s?.asserted != null && (
+          <span className={`pg-veto ${s.asserted ? 'asserted' : ''}`} title="contributor bits up">
+            {s.asserted ? '⛔' : '○'} {s.contributors}
           </span>
         )}
       </div>
@@ -346,9 +371,11 @@ function ResNode({ data }: NodeProps<Node<ResData>>) {
   const kind = snap?.kind ?? data.kind;
   const title = snap?.held_by
     ? `lent to ${snap.held_by}`
-    : filled
-      ? 'slot provided'
-      : 'slot empty';
+    : snap?.capacity != null
+      ? `budget: ${snap.granted} of ${snap.capacity} units granted to ${snap.claimants} claimant${snap.claimants === 1 ? '' : 's'}`
+      : filled
+        ? 'slot provided'
+        : 'slot empty';
   return (
     <div className={`pg-res ${filled ? 'filled' : ''}`} title={title}>
       <Handle type="target" position={Position.Left} />
@@ -365,6 +392,11 @@ function ResNode({ data }: NodeProps<Node<ResData>>) {
         </button>
       )}
       {snap?.held_by && <span className="pg-res-holder">→ {snap.held_by}</span>}
+      {snap?.capacity != null && (
+        <span className="pg-res-holder">
+          {snap.granted}/{snap.capacity}
+        </span>
+      )}
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -544,7 +576,7 @@ function computeLayout(model: GraphModel, planes: Record<string, string[]>, view
 function resKindOf(model: GraphModel, name: string): string {
   for (const n of model.nodes) {
     for (const r of n.resources) {
-      if (r.name === name) return r.consume ? 'consume' : r.shared ? 'shared' : 'lend';
+      if (r.name === name) return r.divisible ? 'divisible' : r.consume ? 'consume' : r.shared ? 'shared' : 'lend';
     }
   }
   return 'lend';
@@ -592,7 +624,7 @@ function buildNodes(model: GraphModel, layout: Layout): Node[] {
         id: c.id,
         type: 'sig',
         position,
-        data: { name, observed: sm.observed, beat: sm.beat } satisfies SigData,
+        data: { name, observed: sm.observed, beat: sm.beat, veto: sm.veto } satisfies SigData,
       };
     }
     const name = c.id.slice(4);

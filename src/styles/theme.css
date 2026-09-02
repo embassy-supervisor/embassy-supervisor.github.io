@@ -1821,6 +1821,20 @@ figure.graph .cluster rect {
 .pg-leases.drained {
   color: var(--sup-rose);
 }
+.pg-openers {
+  color: var(--sup-cyan);
+}
+.pg-veto {
+  color: var(--sup-label);
+}
+.pg-veto.asserted {
+  color: var(--sup-rose);
+  font-weight: 600;
+}
+.pg-sig-flag-veto {
+  color: var(--sup-rose);
+  border-color: var(--sup-rose);
+}
 
 .pg-res {
   width: 112px;
@@ -2082,6 +2096,11 @@ figure.graph .cluster rect {
   color: var(--sup-violet);
   border-color: var(--sup-violet);
 }
+.chip-grant {
+  color: var(--sup-lime);
+  border-color: var(--sup-lime);
+  font-variant-numeric: tabular-nums;
+}
 
 /* A card carrying several chips stacks them so the name keeps its room;
    the title column puts the status on the second chip's line. */
@@ -2149,6 +2168,10 @@ button.pg-member.open {
 .pg-res-kind-shared {
   color: var(--sup-cyan);
   border-color: var(--sup-cyan);
+}
+.pg-res-kind-divisible {
+  color: var(--sup-lime);
+  border-color: var(--sup-lime);
 }
 .pg-res-provide {
   font-size: 0.62rem;
@@ -2371,6 +2394,7 @@ button.pg-member.open {
   font-size: 0.62rem;
 }
 .pg-task-off td,
+.pg-task-held td,
 .pg-task-disabled td {
   opacity: 0.55;
 }

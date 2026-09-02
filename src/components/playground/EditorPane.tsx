@@ -109,7 +109,7 @@ export default function EditorPane({ value, onChange, parse }: Props) {
     <div className="pg-editor-wrap">
       <div className="pg-pane-title">
         <span>supervisor_graph!</span>
-        {parse && !parse.ok && <span className="pg-status-err">{parse.errors.length} errors</span>}
+        {parse && !parse.ok && <span className="pg-status-err">{parse.errors.length} {parse.errors.length === 1 ? 'error' : 'errors'}</span>}
         {parse?.ok && <span className="pg-status-ok">parsed</span>}
       </div>
       <div ref={hostRef} className="pg-cm-host" />

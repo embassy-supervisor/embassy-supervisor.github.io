@@ -72,13 +72,13 @@ export interface NodeModel {
   mode: string;
   deps: DepModel[];
   task: string | null;
-  resources: { name: string; consume: boolean; shared: boolean }[];
+  resources: { name: string; consume: boolean; shared: boolean; divisible: boolean; serialized: boolean }[];
   provides: string[];
   disabled: boolean;
   executor: string | null;
   beat_timeout_ms: number | null;
-  reads: { name: string; observed: boolean; beat: boolean }[];
-  writes: { name: string; observed: boolean; beat: boolean }[];
+  reads: { name: string; observed: boolean; beat: boolean; veto: boolean }[];
+  writes: { name: string; observed: boolean; beat: boolean; veto: boolean }[];
   pool: string | null;
 }
 export interface PoolModel {
@@ -94,6 +94,10 @@ export interface SignalModel {
   readers: string[];
   observed: boolean;
   beat: boolean;
+  /** Some writer carries `veto`: the signal runs as a VetoGate. */
+  veto: boolean;
+  /** The veto-carrying writers, in declaration order (= contributor bit order). */
+  veto_writers: string[];
 }
 export interface GraphModel {
   name: string | null;
@@ -126,6 +130,9 @@ export interface NodeSnap {
   epoch: number;
   status: string | null;
   ticks_since_beat: number;
+  /** Share of the node's first divisible resource: granted / wanted (null without one). */
+  grant: number | null;
+  want: number | null;
   /** Liveness-policed (beat_timeout declared): only then is beat age meaningful. */
   policed: boolean;
   /** Declared executor name; null = the root executor. */
@@ -141,7 +148,7 @@ export interface NodeSnap {
 }
 export interface SignalSnap {
   name: string;
-  kind: 'plain' | 'backed' | 'leased';
+  kind: 'plain' | 'backed' | 'leased' | 'veto';
   writes: number;
   reads: number;
   value: number;
@@ -149,6 +156,11 @@ export interface SignalSnap {
   depth: number | null;
   leases: number | null;
   drained: boolean | null;
+  /** Live Open guards on a backed signal. */
+  openers: number | null;
+  /** A veto gate's state and the number of contributor bits up. */
+  asserted: boolean | null;
+  contributors: number | null;
 }
 export interface PoolSnap {
   name: string;
@@ -167,9 +179,13 @@ export interface LogEntry {
 export interface ResourceSnap {
   name: string;
   filled: boolean;
-  kind: 'lend' | 'consume' | 'shared';
+  kind: 'lend' | 'consume' | 'shared' | 'divisible';
   /** The node holding a lent value, while it is out. */
   held_by: string | null;
+  /** A budget's provided capacity, the units granted, and the holders stating a want. */
+  capacity: number | null;
+  granted: number | null;
+  claimants: number | null;
 }
 export interface ExecutorSnap {
   id: number;

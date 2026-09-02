@@ -33,10 +33,10 @@ arrives with the `defmt` feature.
 | `FaultKind` | what it names | returned by |
 |---|---|---|
 | `ExecutorSlotEmpty` | an `executor:` slot still empty at the deadline | `start`, `start_node`, cascades, pool growth |
-| `ResourceMissing` | a `resources:` slot unfilled at the deadline | same |
+| `ResourceMissing` | a `resources:` slot, or an unprovided `divisible` budget, unfilled at the deadline | same |
 | `ReadyDepTimeout { dep }` | a `ready` dep that never asserted | same |
 | `Spawn(SpawnError)` | the executor refused the spawn (full task pool, busy slot) | same |
-| `ShutdownTimeout` | a node that missed the shutdown-ack deadline | `stop_node`, `teardown`, `apply_control`, `run_pools` (a wedged shrink) |
+| `ShutdownTimeout` | a node that missed the shutdown-ack deadline (its divisible shares are released either way) | `stop_node`, `teardown`, `apply_control`, `run_pools` (a wedged shrink) |
 
 ## The other three
 
@@ -71,8 +71,12 @@ arrives with the `defmt` feature.
   member count itself stays a literal (it determines how much is emitted).
 - **One compose site per binary**; **one set of trace hook symbols per
   binary** (the unnamed graph carries them).
-- `pool_size > 1` cannot combine with lend or `consume` resources (one
-  slot, one value).
+- `pool_size > 1` cannot combine with lend, `consume` or `divisible`
+  resources (one slot, one value or claimant).
+- **Veto gates** (feature `veto`): at most 32 writers per gate, one spelling
+  per gate; the target must be a `VetoGate` with a slot per writer.
+- **Budgets** (feature `budget`): one slot per declaring node and pool
+  member, inside the 256-slot cap.
 
 ## Escalation
 

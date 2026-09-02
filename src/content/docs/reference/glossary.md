@@ -37,8 +37,9 @@ core's own executor.</dd>
 <dt>resource / slot</dt>
 <dd>A value one party builds and one worker owns while it runs, handed over
 through a <code>ResourceSlot</code> at spawn. Kinds: lend (default),
-<code>consume</code>, <code>shared</code>, with <code>local</code> composing
-onto the first three for <code>!Send</code> values.</dd>
+<code>consume</code>, <code>shared</code>, <code>divisible</code> (feature
+<code>budget</code>), with <code>local</code> composing onto the value
+kinds for <code>!Send</code> values.</dd>
 
 <dt>gate</dt>
 <dd>Something a spawn waits on, bounded by the node's
@@ -51,6 +52,37 @@ onto the first three for <code>!Send</code> values.</dd>
 <code>reads:</code>/<code>writes:</code> or derived by
 <code>#[dataflow]</code>. Couplings may be cyclic and never feed the
 topological sort.</dd>
+
+<dt>budget / claimant</dt>
+<dd>Feature <code>budget</code>: a <code>divisible</code> resource declares
+one <code>Budget&lt;K&gt;</code> with a slot per holder. Each holder
+receives a <code>Claimant</code>: it states a <code>want</code> and
+receives a <code>grant</code>, and the supervisor releases the share when
+the holder stops. An allocator <code>provide</code>s the capacity and
+re-divides it under a <code>BudgetPolicy</code>.</dd>
+
+<dt>veto gate / contributor</dt>
+<dd>Feature <code>veto</code>: a <code>VetoGate&lt;N&gt;</code> stays
+asserted while any contributor holds its bit and releases only when all
+do. Each <code>veto</code> writer owns one slot, so a writer that stops
+with its bit up leaves the gate asserted.</dd>
+
+<dt>Open guard</dt>
+<dd>What <code>node.open(&SIG).await</code> returns for a gated signal: a
+counted <code>Deref</code> handle. The count is the reader's hold on the
+producer, and its slow leak to zero is what <code>retire</code> waits
+for.</dd>
+
+<dt>retire</dt>
+<dd>A producer-side verb: resolve once a <code>Backed</code> signal's
+openers have been gone a whole cooldown, then withdraw readiness and
+request the node's own <code>Deactivate</code>. The next
+<code>open</code> starts it again.</dd>
+
+<dt>serialized</dt>
+<dd>A <code>shared</code> slot marker that makes "every holder runs on one
+executor" a compile-time rule: priority ceiling by construction for a
+serialized link, at no runtime cost.</dd>
 
 <dt>beat / heartbeat</dt>
 <dd>A task's sign of life. Raised by <code>beat()</code>, a

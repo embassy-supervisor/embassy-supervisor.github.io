@@ -10,12 +10,14 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize};
 
 use embassy_executor::{SpawnError, Spawner};
-use embassy_supervisor::{Backed, Coupling, Leased, ResourceSlot, TaskNode};
+use embassy_supervisor::{
+    Backed, Budget, Claimant, Coupling, Leased, ResourceGate, ResourceSlot, TaskNode, VetoGate,
+};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
 use crate::behavior::Behavior;
-use crate::model::{MAX_NODES, MAX_SIGNALS, NodeModel};
+use crate::model::{MAX_NODES, MAX_SIGNALS, MAX_VETO_SLOTS, NodeModel};
 
 /// Injected fault states, one per node (see `api::inject`).
 pub mod fault {
@@ -43,11 +45,14 @@ pub static HW_WATCHDOG: HwWatchdog = HwWatchdog {
     last_fed_us: AtomicU64::new(0),
 };
 
-/// The gating wrapper a signal runs with, decided by scenario metadata.
+/// The gating wrapper a signal runs with: `Backed`/`Leased` are decided by
+/// scenario metadata (which behavior opens or leases it), `Veto` by the DSL
+/// itself (a writer carrying the `veto` marker).
 pub enum Gate {
     Plain(&'static AtomicU32),
     Backed(&'static Backed<()>),
     Leased(&'static Leased<AtomicU32>),
+    Veto(&'static VetoGate<MAX_VETO_SLOTS>),
 }
 
 pub struct SignalRt {
@@ -82,6 +87,10 @@ pub enum ResKind {
     /// Never taken: one slot, many holders, stays filled (`embassy_net::Stack`,
     /// which is literally `Copy`).
     Shared,
+    /// A `Budget`: never taken either; every holder claims a share through
+    /// its `Claimant`, and the supervisor releases the share when the
+    /// holder stops.
+    Divisible,
 }
 
 impl ResKind {
@@ -90,6 +99,55 @@ impl ResKind {
             ResKind::Lend => "lend",
             ResKind::Consume => "consume",
             ResKind::Shared => "shared",
+            ResKind::Divisible => "divisible",
+        }
+    }
+}
+
+/// What a resource name is backed by: a slot for the take kinds, a budget
+/// sized to the node cap (slot `i` = node `i`) for `divisible`.
+#[derive(Clone, Copy)]
+pub enum ResObj {
+    Slot(&'static ResourceSlot<u32>),
+    Budget(&'static Budget<MAX_NODES>),
+}
+
+impl ResObj {
+    pub fn gate(self) -> &'static dyn ResourceGate {
+        match self {
+            ResObj::Slot(s) => s,
+            ResObj::Budget(b) => b,
+        }
+    }
+
+    pub fn is_filled(self) -> bool {
+        self.gate().is_filled()
+    }
+
+    /// Fill the slot with a unit value, or set a budget's capacity.
+    pub fn provide(self, v: u32) {
+        match self {
+            ResObj::Slot(s) => s.provide(v),
+            ResObj::Budget(b) => b.provide(v),
+        }
+    }
+
+    pub fn clear(self) {
+        self.gate().clear();
+    }
+
+    /// Take a slot's value; a budget has nothing to take.
+    pub fn take(self) -> Option<u32> {
+        match self {
+            ResObj::Slot(s) => s.take(),
+            ResObj::Budget(_) => None,
+        }
+    }
+
+    pub fn budget(self) -> Option<&'static Budget<MAX_NODES>> {
+        match self {
+            ResObj::Slot(_) => None,
+            ResObj::Budget(b) => Some(b),
         }
     }
 }
@@ -99,10 +157,14 @@ pub const HELD_BY_NONE: usize = usize::MAX;
 
 pub struct ResourceRt {
     pub name: &'static str,
-    pub slot: &'static ResourceSlot<u32>,
+    pub slot: ResObj,
     pub kind: ResKind,
     /// Node index currently holding a lent value ([`HELD_BY_NONE`] when none).
     pub held_by: AtomicUsize,
+    /// A budget's last offered capacity (the boot fill, then whatever the
+    /// allocator provides), so a hand `provide` restores that instead of a
+    /// unit. The allocator overrides it again on its next wake.
+    pub capacity: AtomicU32,
 }
 
 pub struct NodeRt {
@@ -119,6 +181,8 @@ pub struct NodeRt {
     pub provides: Vec<&'static ResourceRt>,
     pub consumes: Vec<&'static ResourceRt>,
     pub lends: Vec<&'static ResourceRt>,
+    /// One claimant per `divisible` resource this node holds (slot = `idx`).
+    pub claims: Vec<(&'static ResourceRt, Claimant)>,
     pub fault: AtomicU8,
     /// Wakes the wedge watcher when a wedge fault is injected: the watcher
     /// must not poll a timer, or every task — a parked Pause task included —
@@ -126,6 +190,12 @@ pub struct NodeRt {
     pub wedge_wake: Signal<CriticalSectionRawMutex, ()>,
     /// Widget-driven input (f32 bits): sensor value, link up/down, load dial.
     pub input: AtomicU32,
+    /// Index into [`pools`] of the pool this node is a member of.
+    pub pool: Option<usize>,
+    /// A `session` member's live client session, visible to its pool
+    /// siblings so sessions are dealt out across the members that are
+    /// running rather than by member number. Cleared on every stop path.
+    pub session_open: AtomicBool,
     /// Wall-clock poll ledger, stamped by `trace_hooks` (browser time).
     pub last_poll_us: AtomicU32,
     pub max_poll_us: AtomicU32,

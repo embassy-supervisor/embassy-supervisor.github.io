@@ -73,6 +73,11 @@ whole pool. Only take-kind `local` is rejected on pools. A worker derives
 its own index with `WORKERS_POOL.member_index(node)` to reach per-member app
 state without per-member spawn arguments.
 
+A `divisible` entry on a pool is one budget shared with the rest of the
+graph, and each member holds its own claimant slot in it. A shrink is a
+stop like any other, so a shrunken member's share is released for the
+remaining holders; a regrown member claims again on its next run.
+
 ## Budgeting from the declaration
 
 The emitted constants exist for const-context sizing, so a related capacity

@@ -242,7 +242,13 @@ pub fn resource_command(name: &str, cmd: &str) -> Result<(), JsValue> {
         .ok_or_else(|| js_err(format!("unknown resource `{name}`")))?;
     match cmd {
         "provide" => {
-            rt.slot.provide(1);
+            // A budget comes back at its last provided capacity; a slot
+            // takes the unit value main would hand over.
+            let v = match rt.kind {
+                registry::ResKind::Divisible => rt.capacity.load(Ordering::Relaxed).max(1),
+                _ => 1,
+            };
+            rt.slot.provide(v);
             log::info!("{name}: provided by hand");
         }
         "clear" => {

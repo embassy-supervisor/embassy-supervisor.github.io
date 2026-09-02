@@ -90,6 +90,10 @@ A missed ack is an error, never a hang: every stop path awaits the ack with
 a 2 s timeout and returns `ShutdownTimeout` naming the node. The default is
 per-node overridable with `ack_timeout:`, for cleanup that legitimately
 takes longer; each node's window runs from the moment it is signalled.
+
+A stop that times out still releases the node's divisible shares: a wedged
+holder cannot strand its claim. A `Pause` park is the exception, since the
+task is coming back.
 `teardown` aborts at the first timeout so a still-live dependent never has
 its dependencies stopped under it; `teardown_continue` is the best-effort
 variant for the "reset next anyway" path.

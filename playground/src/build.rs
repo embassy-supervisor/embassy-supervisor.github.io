@@ -11,15 +11,15 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize};
 
 use embassy_supervisor::{
-    Backed, Coupling, CouplingPoint, DeferredShrink, ElasticPool, Graph, GraphRef, Leased, Mode,
-    NodeCfg, Observer, Pool, ResourceGate, ResourceSlot, SpawnerSlot, Supervisor, TaskNode,
-    Topology, shape,
+    Backed, Budget, Claimant, Coupling, CouplingPoint, DeferredShrink, Divisible, ElasticPool,
+    Graph, GraphRef, Leased, Mode, NodeCfg, Observer, Pool, ResourceGate, ResourceSlot,
+    SpawnerSlot, Supervisor, TaskNode, Topology, VetoGate, shape,
 };
 use embassy_time::Duration;
 
 use crate::behavior::{Behavior, BehaviorSpec, infer, required_gate};
 use crate::model::{Badge, GraphModel, MAX_NODES, NodeModel};
-use crate::registry::{self, Gate, HELD_BY_NONE, NodeRt, ResKind, ResourceRt, SignalRt};
+use crate::registry::{self, Gate, HELD_BY_NONE, NodeRt, ResKind, ResObj, ResourceRt, SignalRt};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum GateKind {
@@ -136,8 +136,14 @@ fn point_dyn(gate: &Gate) -> &'static dyn CouplingPoint {
         Gate::Plain(a) => *a,
         Gate::Backed(b) => *b,
         Gate::Leased(l) => *l,
+        Gate::Veto(g) => *g,
     }
 }
+
+/// What an unprovided `divisible` budget is filled with at boot, the way
+/// `main` would hand over a fixed limit: an allocator behavior with
+/// `provides:` replaces this with its own total.
+pub const BOOT_CAPACITY: u32 = 100;
 
 /// Build the whole runtime graph. Call once per process/wasm instance.
 pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, String> {
@@ -246,11 +252,14 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
         .flat_map(|n| n.provides.iter().map(String::as_str))
         .collect();
     // Take kind per name: consume wins over shared wins over lend (take-kind
-    // names are globally unique in the real DSL; only `shared` repeats).
+    // names are globally unique in the real DSL; only `shared` and
+    // `divisible` repeat, and parse rejects a name mixing the two worlds).
     let mut kinds: BTreeMap<&str, ResKind> = BTreeMap::new();
     for n in &model.nodes {
         for r in &n.resources {
-            let k = if r.consume {
+            let k = if r.divisible {
+                ResKind::Divisible
+            } else if r.consume {
                 ResKind::Consume
             } else if r.shared {
                 ResKind::Shared
@@ -275,18 +284,30 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
             if resource_map.contains_key(r) {
                 continue;
             }
-            let slot: &'static ResourceSlot<u32> = leak(ResourceSlot::new());
+            let kind = kinds.get(r).copied().unwrap_or(ResKind::Lend);
+            let slot = match kind {
+                // One budget per name, sized to the node cap so slot `i` is
+                // node `i` (the real macro sizes it to the declaring
+                // holders; the numbering is what matters).
+                ResKind::Divisible => ResObj::Budget(leak(Budget::new())),
+                _ => ResObj::Slot(leak(ResourceSlot::new())),
+            };
+            let boot = match kind {
+                ResKind::Divisible => BOOT_CAPACITY,
+                _ => 1,
+            };
             if !provided.contains(&r) {
                 // Nobody provides it at runtime: fill once at boot, the way
                 // main hands over what it owns. Never refilled — a `consume`
                 // taker leaves it empty for good until something re-provides.
-                slot.provide(1);
+                slot.provide(boot);
             }
             let rt = leak(ResourceRt {
                 name: leak_str(r),
                 slot,
-                kind: kinds.get(r).copied().unwrap_or(ResKind::Lend),
+                kind,
                 held_by: AtomicUsize::new(HELD_BY_NONE),
+                capacity: AtomicU32::new(boot),
             });
             resource_map.insert(rt.name, rt);
             resources.push(rt);
@@ -297,14 +318,21 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
     let mut signals: Vec<&'static SignalRt> = Vec::new();
     for (j, s) in model.signals.iter().enumerate() {
         let name = leak_str(&s.name);
-        let gate = match gates
-            .get(s.name.as_str())
-            .copied()
-            .unwrap_or(GateKind::Plain)
-        {
-            GateKind::Plain => Gate::Plain(leak(AtomicU32::new(0))),
-            GateKind::Backed => Gate::Backed(leak(Backed::new(()))),
-            GateKind::Leased => Gate::Leased(leak(Leased::new(AtomicU32::new(0)))),
+        let kind = gates.get(s.name.as_str()).copied();
+        if s.veto && kind.is_some() {
+            return Err(format!(
+                "signal `{}` carries `veto` but a behavior also opens or leases it: a veto gate is neither Backed nor Leased",
+                s.name
+            ));
+        }
+        let gate = if s.veto {
+            Gate::Veto(leak(VetoGate::new()))
+        } else {
+            match kind.unwrap_or(GateKind::Plain) {
+                GateKind::Plain => Gate::Plain(leak(AtomicU32::new(0))),
+                GateKind::Backed => Gate::Backed(leak(Backed::new(()))),
+                GateKind::Leased => Gate::Leased(leak(Leased::new(AtomicU32::new(0)))),
+            }
         };
         let mut coupling = Coupling::new(name, point_dyn(&gate));
         if s.observed {
@@ -407,20 +435,38 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
             cfg = cfg.with_bound_deps(Box::leak(bound_deps.into_boxed_slice()));
         }
 
-        // Resource gates and provides.
+        // Resource gates, provides and budget claims. A budget gates its
+        // holders like any slot (unprovided = `ResourceMissing` at the
+        // deadline); the claims table is what the supervisor releases when
+        // the holder stops, and this node's slot in every budget is `i`.
         if !m.resources.is_empty() {
             let gates: Vec<&'static dyn ResourceGate> = m
                 .resources
                 .iter()
-                .map(|r| resource_map[r.name.as_str()].slot as &'static dyn ResourceGate)
+                .map(|r| resource_map[r.name.as_str()].slot.gate())
                 .collect();
             cfg = cfg.with_resources(Box::leak(gates.into_boxed_slice()));
+        }
+        let claims: Vec<(&'static ResourceRt, Claimant)> = m
+            .resources
+            .iter()
+            .filter_map(|r| {
+                let rt = resource_map[r.name.as_str()];
+                rt.slot.budget().map(|b| (rt, b.claimant(i as u8)))
+            })
+            .collect();
+        if !claims.is_empty() {
+            let table: Vec<(&'static dyn Divisible, u8)> = claims
+                .iter()
+                .map(|(r, c)| (r.slot.budget().unwrap() as &'static dyn Divisible, c.slot()))
+                .collect();
+            cfg = cfg.with_claims(Box::leak(table.into_boxed_slice()));
         }
         if !m.provides.is_empty() {
             let gates: Vec<&'static dyn ResourceGate> = m
                 .provides
                 .iter()
-                .map(|r| resource_map[r.as_str()].slot as &'static dyn ResourceGate)
+                .map(|r| resource_map[r.as_str()].slot.gate())
                 .collect();
             cfg = cfg.with_provides(Box::leak(gates.into_boxed_slice()));
         }
@@ -443,6 +489,17 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
                 }
                 if r.beat {
                     c = c.beat();
+                }
+                if is_write && r.veto {
+                    // Contributor bits are numbered per gate over the
+                    // veto-carrying writers in declaration order, as the
+                    // macro numbers them in item order.
+                    let slot = model.signals[j]
+                        .veto_writers
+                        .iter()
+                        .position(|w| *w == m.name)
+                        .expect("a veto writer is listed on its signal");
+                    c = c.veto(slot as u8);
                 }
                 table.push(c);
                 out.push(sig);
@@ -468,6 +525,39 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
         }
 
         let behavior = resolve_behavior(&node_specs[i], &signals, sig_index)?;
+        // Retirement watches one gate: a producer with several Backed
+        // outputs would retire while readers still hold the others.
+        if matches!(
+            behavior,
+            Behavior::Periodic {
+                retire_ms: Some(_),
+                ..
+            } | Behavior::GatedConsumer {
+                retire_ms: Some(_),
+                ..
+            }
+        ) {
+            let backed: Vec<&str> = writes_rt
+                .iter()
+                .filter(|s| matches!(s.gate, Gate::Backed(_)))
+                .map(|s| s.name)
+                .collect();
+            if backed.len() > 1 {
+                badges.push(Badge {
+                    item: m.name.clone(),
+                    clause: "retire_ms".into(),
+                    note: format!(
+                        "retirement watches `{}` only; readers of {} keep no hold on this producer",
+                        backed[0],
+                        backed[1..]
+                            .iter()
+                            .map(|b| format!("`{b}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                });
+            }
+        }
         if matches!(behavior, Behavior::Queue { .. })
             && let Some(out) = writes_rt.first()
         {
@@ -483,6 +573,8 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
                 }
             }
             Behavior::Periodic { .. } => 0.5,
+            // The site limit dial: full capacity until turned down.
+            Behavior::Budget { .. } => 1.0,
             _ => 0.0,
         };
         let consumes: Vec<&'static ResourceRt> = m
@@ -514,9 +606,15 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
             provides,
             consumes,
             lends,
+            claims,
             fault: AtomicU8::new(0),
             wedge_wake: embassy_sync::signal::Signal::new(),
             input: AtomicU32::new(input.to_bits()),
+            pool: model
+                .pools
+                .iter()
+                .position(|p| p.members.iter().any(|mn| mn == &m.name)),
+            session_open: AtomicBool::new(false),
             last_poll_us: AtomicU32::new(0),
             max_poll_us: AtomicU32::new(0),
             exec_us: AtomicU64::new(0),
@@ -542,6 +640,21 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
             policy: DeferredShrink::new(Duration::from_millis(p.cooldown_ms)),
         });
         pools.push(pool as &'static dyn Pool);
+        // `min:` is the shrink floor, not a start floor: bring-up starts the
+        // `Terminate` members and the policy grows the rest on demand, so a
+        // floor above the always-on count is never reached by a quiet pool.
+        let always_on = p.modes.iter().filter(|m| m.as_str() == "Terminate").count();
+        if usize::from(p.min) > always_on {
+            badges.push(Badge {
+                item: p.name.clone(),
+                clause: "min".into(),
+                note: format!(
+                    "`min: {}` is a shrink floor; only the {always_on} `Terminate` member{} start at boot and the pool grows on demand, one idle spare at a time",
+                    p.min,
+                    if always_on == 1 { "" } else { "s" }
+                ),
+            });
+        }
         pool_rts.push(registry::PoolRt {
             name: leak_str(&p.name),
             members,
@@ -586,18 +699,48 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
 /// Drive the built supervisor forever: bring-up with the liveness monitor
 /// running *alongside* it (`run()` only starts the monitor after `start()`
 /// completes, so a `ready` dep on a `ready_on_write` node would deadlock a
-/// cold boot — the crate's own tests use this same composition), then hand
-/// over to `run()`, whose `start` is idempotent.
+/// cold boot — the crate's own tests use this same composition), then the
+/// driver loop composed from the crate's public pieces: pools, the control
+/// queue, bound-dep binds, the monitor. Not `run()`: that begins with its
+/// own `start()`, and a second bring-up wave retries every bound-parked
+/// node with a full `slot_timeout` budget before the first queued command
+/// is served, so a demand-start requested during boot landed seconds late.
 pub async fn drive_supervisor(
     spawner: &embassy_executor::Spawner,
 ) -> embassy_supervisor::NodeFault {
+    use embassy_futures::select::{Either, Either3, select, select3};
+    use embassy_supervisor::{wait_bind, wait_control};
+
     let sup = built().expect("build first").sup;
-    match embassy_futures::select::select(sup.start(spawner), sup.monitor()).await {
-        embassy_futures::select::Either::First(Ok(())) => {}
-        embassy_futures::select::Either::First(Err(fault)) => return fault,
-        embassy_futures::select::Either::Second(never) => match never {},
+    match select(sup.start(spawner), sup.monitor()).await {
+        Either::First(Ok(())) => {}
+        Either::First(Err(fault)) => return fault,
+        Either::Second(never) => match never {},
     }
-    sup.run(spawner).await
+    let driver = async {
+        loop {
+            match select(sup.run_pools(spawner), wait_control()).await {
+                Either::First(fault) => return fault,
+                Either::Second(cmd) => {
+                    if let Err(fault) = sup.apply_control(cmd, spawner).await {
+                        return fault;
+                    }
+                }
+            }
+        }
+    };
+    let binds = async {
+        loop {
+            wait_bind().await;
+            if let Err(fault) = sup.apply_bind(spawner).await {
+                return fault;
+            }
+        }
+    };
+    match select3(driver, binds, sup.monitor()).await {
+        Either3::First(fault) | Either3::Second(fault) => fault,
+        Either3::Third(never) => match never {},
+    }
 }
 
 fn resolve_behavior(
@@ -606,9 +749,14 @@ fn resolve_behavior(
     sig_index: impl Fn(&str) -> usize,
 ) -> Result<Behavior, String> {
     Ok(match spec {
-        BehaviorSpec::Periodic { period_ms, scaled } => Behavior::Periodic {
+        BehaviorSpec::Periodic {
+            period_ms,
+            scaled,
+            retire_ms,
+        } => Behavior::Periodic {
             period_ms: *period_ms,
             scaled: *scaled,
+            retire_ms: *retire_ms,
         },
         BehaviorSpec::Pipeline {
             work_ms,
@@ -631,9 +779,14 @@ fn resolve_behavior(
             policy: *policy,
             drain_ms: *drain_ms,
         },
-        BehaviorSpec::Budget { total, period_ms } => Behavior::Budget {
+        BehaviorSpec::Budget {
+            total,
+            period_ms,
+            step,
+        } => Behavior::Budget {
             total: *total,
             period_ms: *period_ms,
+            step: step.unwrap_or(total / 10).max(1),
         },
         BehaviorSpec::Session { busy_ms } => Behavior::Session { busy_ms: *busy_ms },
         BehaviorSpec::ControlLoop { period_ms } => Behavior::ControlLoop {
@@ -649,11 +802,18 @@ fn resolve_behavior(
         },
         BehaviorSpec::Oneshot { run_ms } => Behavior::Oneshot { run_ms: *run_ms },
         BehaviorSpec::Watchdog { feed_ms } => Behavior::Watchdog { feed_ms: *feed_ms },
+        BehaviorSpec::VetoWriter { period_ms } => Behavior::VetoWriter {
+            period_ms: *period_ms,
+        },
+        BehaviorSpec::VetoSink { period_ms } => Behavior::VetoSink {
+            period_ms: *period_ms,
+        },
         BehaviorSpec::Idle => Behavior::Idle,
         BehaviorSpec::GatedConsumer {
             open,
             period_ms,
             delay_ms,
+            retire_ms,
         } => {
             let sig = signals[sig_index(open)];
             let Gate::Backed(target) = sig.gate else {
@@ -664,6 +824,7 @@ fn resolve_behavior(
                 target,
                 period_ms: *period_ms,
                 delay_ms: *delay_ms,
+                retire_ms: *retire_ms,
             }
         }
         BehaviorSpec::LeaseUser { lease, hold_ms } => {

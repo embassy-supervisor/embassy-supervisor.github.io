@@ -34,7 +34,7 @@ supervisor_graph! {
         , state: Type = expr            //   per-activation boxed state
         , cancel                        //   shell owns shutdown, no node
         , reads: [crate::SIG, ..]       //   declared dataflow
-        , writes: [crate::SIG beat]     //     `beat` marks the heartbeat
+        , writes: [crate::SIG beat]     //   entry markers: observed, beat, veto
         , discover                      //   bind tables derived from code
         , dataflow: [crate::setter]     //   adopt an accessor's tables
         , beat_timeout: MS, ready_on_write
@@ -111,7 +111,8 @@ without ever spawning it.
 Each is a page or a section of one:
 
 - [`resources:`](/concepts/resources/) hands owned
-  values to workers through slots, with `local`, `consume` and `shared` kinds.
+  values to workers through slots, with `consume`, `shared`, `divisible`
+  and `local` kinds.
 - [`provides:`](/concepts/resources/#provides-slots-that-die-with-their-producer)
   names the slots a node fills at runtime; they are cleared when it stops.
 - [`exit:`](/concepts/resources/#exit-typed-exit-values)
@@ -170,10 +171,10 @@ budget. See [Elastic pools](/concepts/pools/).
 
 ## Feature gates
 
-Constructs behind Cargo features (`ready`, `bound`, `observed`, `local`,
-`state:`, `beat_timeout:`) always **parse**; whether your build permits them
-is policy applied afterwards. Using one without its feature is a compile
-error that names the feature.
+Constructs behind Cargo features (`ready`, `bound`, `observed`, `veto`,
+`divisible`, `serialized`, `local`, `state:`, `beat_timeout:`) always
+**parse**; whether your build permits them is policy applied afterwards.
+Using one without its feature is a compile error that names the feature.
 
 ## `#[cfg(...)]`
 
@@ -192,6 +193,12 @@ Anything structurally wrong is an error with a span on the offending token:
 - empty or duplicate resource names; contradictory kind markers; a `shared`
   slot redeclared with a different shape
 - `local` without the `local-resources` feature; `local` with `executor:`
+- `divisible` mixed with another kind or given a type, or used without the
+  `budget` feature; `divisible` on a `pool_size > 1` entry
+- `veto` on a `reads:` entry, without the `veto` feature, on a gate with too
+  few slots, with more than 32 writers, or with one gate spelled two ways
+- `serialized` without `shared`, or with holders spread over several
+  executors
 - `slot_timeout: 0` or `ack_timeout: 0`; `cancel` without `task:`; `cancel` with `Pause`
 - pool bounds violations; a `pool` without the `pool` feature
 - more than 256 slots (all graph indices are `u8`)

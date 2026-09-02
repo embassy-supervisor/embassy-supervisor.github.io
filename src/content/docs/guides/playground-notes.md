@@ -25,11 +25,12 @@ its microseconds. Nothing here measures poll latency; the
 A static page cannot compile your Rust, so `task:` paths run on a generic
 interpreter instead, the approach SlintPad and the Typst web app take. Each
 worker's behavior (periodic producer, pipeline stage, pool server, bounded
-queue, budget allocator, session holder, control loop, …) comes from the
-scenario's bindings, or is inferred from the node's shape when you add new
-nodes. The workers drive the real task-side APIs: `beat()`, `set_ready()`,
-`mark_busy()`, `provide()`, `open()`, `lease()`, `run_pausable()`,
-`set_detached()`, `report_status()`.
+queue, budget allocator, session holder, control loop, veto writer, …) comes
+from the scenario's bindings, or is inferred from the node's shape when you
+add new nodes. The workers drive the real task-side APIs: `beat()`,
+`set_ready()`, `mark_busy()`, `provide()`, `open()`, `lease()`, `retire()`,
+`veto()`, a `Claimant`'s `want()` / `grant()`, a `Budget`'s `rebalance()`,
+`run_pausable()`, `set_detached()`, `report_status()`.
 
 A `queue` behavior carries an explicit overflow policy (`reject`,
 `backpressure`, or `drop_oldest`) because the right answer depends on the
@@ -42,13 +43,24 @@ A "crash" is an abrupt worker exit. A real `panic!` would take the whole wasm
 instance with it: the one place the browser is less forgiving than a
 supervised MCU.
 
-Two flag details for reading the panes. Busy and ready clear on a node's
-*next* activation, not on stop, so the worker clears both itself on every stop
-path: a bound-stopped session no longer reads busy, and stopping a node
-withdraws its readiness, which is what lets a `ready bound` subtree follow a
-`stop_node` down. And `DeferredShrink` shrinks only when at least **two**
-members are idle, so a `min: 0` pool settles at one warm member: hysteresis,
-not a leak.
+Two flags are worth reading carefully. Busy and ready clear on a node's
+*next* activation, not on stop, so the worker clears both on every stop path.
+A bound-stopped session no longer reads busy, and stopping a node withdraws
+its readiness. That is why a `ready bound` subtree follows a `stop_node`
+down.
+
+`DeferredShrink` only shrinks a pool when at least two members are idle, so a
+`min: 0` pool keeps one warm member. The pool meter's tooltip notes this.
+`min:` is only the shrink floor: bring-up starts the `Terminate` members, and
+the policy grows the rest on demand. The graph badges a floor that sits above
+the always-on count.
+
+A `session` member routes the next client to whichever running member is
+idle, not by member number. The spare left by a shrink serves the next car,
+so the pool scales out again. A dial step down closes the highest-numbered
+session and never migrates a live one. A `control_loop` holds last-good only
+after two empty periods, because a producer slower than the loop leaves
+single gaps every cycle that are not news.
 
 ## What executes
 
@@ -61,16 +73,17 @@ constructors, so most of the DSL executes for real:
 | ordering | `deps:`, including `ready` and `ready bound` markers |
 | executors | named `executor` clauses get real (wasm) executor instances |
 | pools | member modes, `min:`/`max:` (integer literals), `DeferredShrink` cooldowns |
-| resources | `resources:` gating, `provides:`, consume markers |
+| resources | `resources:` gating, `provides:`, the `consume` and `divisible` markers |
 | timeouts | `slot_timeout:`, `ack_timeout:`, `beat_timeout:`, `beat_window:` |
 | liveness | beats, `observed` / `beat` markers, `ready_on_write`, stale reports |
-| data-deps | gated `open()` demand-start, `Leased` leases / drain / reopen |
+| data-deps | gated `open()` demand-start with counted `Open` guards, producer retirement (`retire`), `Leased` leases / drain / reopen |
 | control | activate, deactivate, restart cascades, `disabled` at boot, the `collateral` hold released by activate |
 | single-node verbs | `start_node` / `stop_node` / `resume_node` (the graph cards and device buttons drive them) |
 | whole-graph verbs | `teardown`, `resume_pausable`, `respawn_terminate`: the power coordinator's sleep/wake cycle |
 | Pause | parks for real: ack, wait, resume in place, keeping what it took |
 | detached | `set_detached` (the power coordinator and self-test behaviors), shown as a chip and LED state |
-| resource kinds | lend (taken and restored, the holder shown), `consume` (empty after exit; a respawn fails closed until re-provided), `shared` (never taken) |
+| resource kinds | lend (taken and restored, the holder shown), `consume` (empty after exit; a respawn fails closed until re-provided), `shared` (never taken), `divisible` (a real `Budget` per name: holders claim through a `Claimant`, the allocator divides with `FairShare` / `ShrinkFastGrowSlow`, and the supervisor releases a stopped holder's share on its shutdown ack) |
+| veto | `writes: [X veto]` runs `X` as a `VetoGate`: one contributor bit per writer, `node.veto()` handles, the reader's `wait_asserted` / `wait_released`; a stopped writer's bit stays up |
 | pool deps | `deps: [POOL]` resolves to the floor member, matching the crate |
 | trace | the recorders run: genuine poll and pass counts, the current task per executor |
 | composition | `supervisor_fragment!` + `compose_graph!` |
@@ -78,7 +91,9 @@ constructors, so most of the DSL executes for real:
 Clauses parsed but not executed are badged in the editor rather than rejected:
 `exit:` and `state:` (their storage is macro-generated), `discover` and
 `dataflow:` adoption lists (shown and linted, not run), `#[cfg(...)]` (treated
-as enabled), and non-literal pool expressions. A parked node (no `task:`) is
+as enabled), `serialized` (a compile-time rule about executors; every
+playground executor polls on the one browser thread), and non-literal pool
+expressions. A parked node (no `task:`) is
 spawned by the app only when a scenario binds a `power_coordinator` behavior
 to it; otherwise it is tracked but idle.
 

@@ -58,7 +58,7 @@ supervisor_graph! {
 LED.provide(embassy_rp::gpio::Output::new(p.PIN_25, Level::Low));
 ```
 
-## Kinds: lend, consume, shared, local
+## Kinds: lend, consume, shared, divisible, local
 
 Per-entry markers refine the default lend-and-restore. Pick by what the
 worker does with the value:
@@ -69,6 +69,7 @@ worker does with the value:
 | `consume` | `Type` by value | nothing; slot stays **empty** | values the worker must drop at teardown (a driver whose `Drop` releases pins or DMA), or rebuilt fresh each run |
 | `shared` | `Type` by value, copied out (`T: Copy`) | nothing; slot **stays filled** | one handle fanned out to many consumers, for example a network stack handle; several nodes, and whole pools, declare the same slot name |
 | `local` | as the kind it composes with | as the kind it composes with | `!Send` values on a single core; needs the `local-resources` feature |
+| `divisible` | a `Claimant`: the holder's own slot in the graph's budget | share **released** by the supervisor; a `Pause` park keeps it | one quantity split among N holders (a power or bandwidth cap); feature `budget` |
 
 `consume` makes teardown-drop explicit and the wake path honest: until the
 application re-provides, a respawn fail-closes with `ResourceMissing` instead
@@ -90,6 +91,49 @@ supervisor_graph! {
 // bring-up, and again before every wake respawn, before the node comes up:
 RUNNER.provide(build_radio_runner().await);
 ```
+
+## `divisible`: one quantity, many holders
+
+Feature `budget`. Some values are not handed over but split: a site power
+budget shared by charging sessions, a bandwidth cap shared by radio links.
+`resources: [POWER: divisible]` emits one `pub static POWER: Budget<K>` with
+one slot per declaring node and pool member; the macro rejects a budget
+sized past 256 holders and any `pool_size > 1` entry (one claimant per
+slot).
+
+Each holder's shell receives a `Claimant` bound to its own slot. It states
+a want, reads its grant, and waits for the grant to move:
+
+```rust
+async fn session(node: &'static TaskNode, mut power: Claimant) {
+    power.want(7_000);                        // watts, say
+    let mut allowed = power.grant();
+    loop {
+        match node.run_cancellable_acked(enforce(allowed)).await {
+            Err(_aborted) => return,          // the supervisor releases the share
+            Ok(_) => allowed = power.wait_grant_change(allowed).await,
+        }
+    }
+}
+```
+
+One task is the allocator: it names the slot in `provides: [POWER]`, calls
+`POWER.provide(capacity)` when the total changes, and re-divides on
+`POWER.wait_change()` under a `BudgetPolicy`. Two ship: `FairShare` (equal
+splits) and `ShrinkFastGrowSlow` (cuts land at once, growth returns in
+fixed steps). An unprovided budget fails bring-up as `ResourceMissing`,
+like any slot. The release rule is the point: a stopped holder never
+strands its share. Every stop path releases the holder's slot, including a
+holder that misses its shutdown ack; only a `Pause` park keeps the claim,
+because the parked task is coming back. The budget costs about `44 + 16*K`
+bytes of static RAM for `K` holders, and nothing per node but a claims
+pointer.
+
+*Run it:* the **EV charging site controller** scenario in the
+[playground](/guides/playground-scenarios#ev-charging-site-controller) runs
+this end to end: a site-wide amp budget re-divided as sessions join and
+leave, a derate dial that re-provides, and a stop that hands the stopped
+session's share back.
 
 ## `provides:`: slots that die with their producer
 
@@ -147,9 +191,9 @@ readiness, or a gated read. The dataflow half of the story is
 ## Limits worth knowing
 
 - `resources:` requires `task:` (the generated shell does the take/restore).
-- `pool_size > 1` cannot combine with lend or `consume` entries: one slot
-  holds one value. Use `shared`, or a pool, whose members get per-member slot
-  arrays.
+- `pool_size > 1` cannot combine with lend, `consume` or `divisible`
+  entries: one slot holds one value (a budget: one claimant). Use `shared`,
+  or a pool, whose members get per-member slot arrays.
 - A panic in the worker skips the restore (on embedded, a panic reboots).
 
 ## Next

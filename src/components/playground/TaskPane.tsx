@@ -24,11 +24,14 @@ const HOG_POLL_US = 50_000;
 
 type SortKey = 'name' | 'executor' | 'status' | 'polls' | 'last' | 'max' | 'share' | 'beat' | 'epoch';
 
+// Same vocabulary as the graph pane's LED, so a node reads alike in both.
 function ledClass(n: NodeSnap, stale: boolean): string {
   if (n.disabled) return 'disabled';
+  if (n.collateral) return 'held';
   if (n.bound_stopped) return 'bound';
   if (!n.running) return n.exited ? 'done' : 'off';
   if (stale) return 'stale';
+  if (n.detached) return 'detached';
   if (!n.ready) return 'starting';
   return 'up';
 }
@@ -173,6 +176,7 @@ export default function TaskPane({ snapshot, stale, cores }: Props) {
               const flags = [
                 n.running && n.ready && 'ready',
                 n.disabled && 'disabled',
+                n.collateral && 'held',
                 n.bound_stopped && 'bound',
                 n.detached && 'detached',
                 n.exited && 'exited',

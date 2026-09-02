@@ -14,7 +14,7 @@ description = "In-browser playground for embassy-supervisor: real runtime + real
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-embassy-supervisor = { version = "0.7.0", features = [
+embassy-supervisor = { version = "0.8.0", features = [
     "macros",
     "control",
     "pool",
@@ -32,9 +32,11 @@ embassy-supervisor = { version = "0.7.0", features = [
     "graph-ref",
     "trace",
     "log",
+    "budget",
+    "veto",
 ] }
-embassy-supervisor-syntax = "=0.2.0"
-embassy-supervisor-tools = { version = "=0.3.0", default-features = false }
+embassy-supervisor-syntax = "=0.3.0"
+embassy-supervisor-tools = { version = "=0.4.0", default-features = false }
 embassy-time = { version = "0.5", features = ["mock-driver"] }
 embassy-futures = "0.1"
 embassy-sync = "0.8"
@@ -43,7 +45,7 @@ embassy-sync = "0.8"
 # critical-section impl is the same shim the crate's host tests use.
 critical-section = { version = "1", features = ["std"] }
 
-# Same syn major as embassy-supervisor-syntax 0.2.0 (syn 3).
+# Same syn major as embassy-supervisor-syntax 0.3.0 (syn 3).
 syn = { version = "3", default-features = false, features = ["parsing", "printing"] }
 quote = "1"
 

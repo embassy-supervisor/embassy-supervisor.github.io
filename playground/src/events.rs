@@ -41,6 +41,9 @@ pub struct NodeSnap {
     pub epoch: u32,
     pub status: Option<&'static str>,
     pub ticks_since_beat: u32,
+    /// This node's share of its first `divisible` resource, when it holds one.
+    pub grant: Option<u32>,
+    pub want: Option<u32>,
     /// Whether the liveness monitor polices this node (`beat_timeout:`
     /// declared). Without a budget, `ticks_since_beat` is just time since
     /// spawn — a counter that reads as activity on a node that never beats.
@@ -82,7 +85,7 @@ pub struct ExecutorSnap {
 #[derive(Serialize)]
 pub struct SignalSnap {
     pub name: &'static str,
-    /// `plain` | `backed` | `leased`
+    /// `plain` | `backed` | `leased` | `veto`
     pub kind: &'static str,
     pub writes: u32,
     pub reads: u32,
@@ -91,6 +94,11 @@ pub struct SignalSnap {
     pub depth: Option<u32>,
     pub leases: Option<u32>,
     pub drained: Option<bool>,
+    /// Live `Open` guards on a backed signal.
+    pub openers: Option<u32>,
+    /// A veto gate's state and how many contributor bits are up.
+    pub asserted: Option<bool>,
+    pub contributors: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -107,10 +115,15 @@ pub struct PoolSnap {
 pub struct ResourceSnap {
     pub name: &'static str,
     pub filled: bool,
-    /// lend | consume | shared
+    /// lend | consume | shared | divisible
     pub kind: &'static str,
     /// The node holding a lent value, while it is out.
     pub held_by: Option<&'static str>,
+    /// A budget's provided capacity, the units granted out of it, and the
+    /// holders currently stating a want.
+    pub capacity: Option<u32>,
+    pub granted: Option<u32>,
+    pub claimants: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -196,6 +209,11 @@ pub fn node_snap(idx: u8, rt: &'static NodeRt) -> NodeSnap {
         epoch: node.epoch(),
         status: node.status(),
         ticks_since_beat: node.ticks_since_beat(),
+        grant: rt.claims.first().map(|(_, c)| c.grant()),
+        want: rt
+            .claims
+            .first()
+            .map(|(r, c)| r.slot.budget().map_or(0, |b| b.want_of(c.slot()))),
         policed: rt.model.beat_timeout_ms.is_some(),
         executor: rt.model.executor.as_deref(),
         exec_id: rt.exec_id.load(Ordering::Relaxed),
@@ -217,6 +235,15 @@ pub fn snapshot() -> Snapshot {
                 Gate::Plain(_) => ("plain", None, None),
                 Gate::Backed(_) => ("backed", None, None),
                 Gate::Leased(l) => ("leased", Some(l.leases()), Some(l.is_drained())),
+                Gate::Veto(_) => ("veto", None, None),
+            };
+            let openers = match &s.gate {
+                Gate::Backed(b) => Some(b.openers()),
+                _ => None,
+            };
+            let (asserted, contributors) = match &s.gate {
+                Gate::Veto(g) => (Some(g.is_asserted()), Some(g.contributors().count_ones())),
+                _ => (None, None),
             };
             SignalSnap {
                 name: s.name,
@@ -230,6 +257,9 @@ pub fn snapshot() -> Snapshot {
                     .then(|| s.depth.load(Ordering::Relaxed)),
                 leases,
                 drained,
+                openers,
+                asserted,
+                contributors,
             }
         })
         .collect();
@@ -263,8 +293,8 @@ pub fn snapshot() -> Snapshot {
     let resources = registry::resources()
         .iter()
         .map(|r| {
-            use embassy_supervisor::ResourceGate;
             let held = r.held_by.load(Ordering::Relaxed);
+            let budget = r.slot.budget();
             ResourceSnap {
                 name: r.name,
                 filled: r.slot.is_filled(),
@@ -272,6 +302,13 @@ pub fn snapshot() -> Snapshot {
                 held_by: (held != HELD_BY_NONE)
                     .then(|| registry::nodes().get(held).map(|n| n.node.name()))
                     .flatten(),
+                capacity: budget.map(|b| b.capacity()),
+                granted: budget.map(|b| b.total_granted()),
+                claimants: budget.map(|b| {
+                    (0..b.slots() as u8)
+                        .filter(|&slot| b.want_of(slot) > 0)
+                        .count() as u32
+                }),
             }
         })
         .collect();

@@ -1,6 +1,6 @@
 ---
 title: Gated reads and leases
-description: "data-deps both ways: open() a signal whose producer must be up, and lease() what a producer must not free while held."
+description: "data-deps both ways: open() a signal whose producer must be up, retire() a producer whose readers are gone, and lease() what a producer must not free while held."
 ---
 
 <p class="eyebrow">Concepts</p>
@@ -25,8 +25,11 @@ signal:
 pub static ESTIMATE: Backed<Watch<CriticalSectionRawMutex, Estimate, 4>> =
     Backed::new(Watch::new());
 
-// The consumer states a read, and Deref keeps the wrapped API:
-let mut rx = node.open(&crate::ESTIMATE).await.receiver().unwrap();
+// The consumer states a read. open hands back a counted Open guard; Deref
+// gives the wrapped signal's own API back, and the guard is the reader's
+// hold on the producer, so bind it for as long as the reading lasts.
+let est = node.open(&crate::ESTIMATE).await;
+let mut rx = est.receiver().unwrap();
 ```
 
 **Nothing names the producer.** The graph already knows who writes a signal,
@@ -35,18 +38,43 @@ own graph, covering `discover`-derived tables no declaration site could
 name. Two graphs in one binary never answer for each other.
 
 `open` is the only awaiting verb, it fires once per consumer at setup, and it
-grants no exclusive access. There is deliberately **no blanket impl** of the
-`Gated` trait: calling `open` on an ungated signal is a compile error rather
-than a no-op the reader would mistake for a guarantee. Write your own gate by
-implementing `Gated::ensure`: it receives the reading node and the coupling
-entry, so it can log the caller, throttle a first access, wait on a mode,
-anything, including awaiting.
+grants no exclusive access. It hands back an `Open<T>` **guard**:
+the open is counted before it waits, and the count drops when the guard
+falls. That count is what makes the teardown verb below possible.
+`Open::signal()` returns the wrapped signal for APIs that demand a
+`'static` reference; a reference kept past the guard's drop is uncounted,
+like any reach past the gate that skips `open`. There is deliberately **no
+blanket impl** of the `Gated` trait: calling `open` on an ungated signal is a
+compile error rather than a no-op the reader would mistake for a guarantee.
+Write your own gate by implementing `Gated`: it names its handle (`type
+Handle: Deref` plus `fn admit(&'static self)`; a wrapper that only waits
+sets `Handle = &'static Self`). `ensure` receives the reading node and the
+coupling entry, so it can log the caller, throttle a first access, wait on a
+mode, anything, including awaiting.
 One trap the graph cannot catch: coupling tables may legitimately be cyclic,
 so an `open` from a task the producer transitively `deps:`-on deadlocks
 silently. The producer's bring-up waits on the opener (a `ready` dep, a
 resource it provides) while the opener waits on the producer, and nothing
 faults. Open such a signal only after satisfying whatever the producer's
 bring-up gates on, for example after this task's own `set_ready()`.
+
+### Retiring a producer whose readers left
+
+The count has a producer-side verb. `node.retire(&SIG, cooldown).await`
+resolves once `SIG.openers()` has sat at zero for a whole cooldown; a reader
+arriving inside the cooldown restarts the clock. When it fires, the producer
+withdraws its readiness, so a late opener waits for the next activation
+instead of reading a producer on its way out (one admitted just before the
+withdrawal cancels the retirement), and with `control` it requests its own
+`Deactivate`. The next `open` starts it again, as before.
+`Backed::unwatched(cooldown)` is the same wait without the automatic stop,
+for a producer that cleans up by hand. Any other stop releases what the
+node holds too, and wakes openers parked on the stopped gate so they can
+request the next start without waiting out their retry.
+
+*Run it:* the **demand-responsive telemetry** mechanism tour in the
+[playground](/playground) retires a modem, a sensor hub and a twin store in
+reverse order as their readers leave, and brings each back on the next open.
 
 ## The teardown side: `Leased` and `drain`
 
@@ -95,9 +123,11 @@ scheme. The failure mode is a leaked guard: `drain` never returns, the
 producer misses its shutdown ack, and the shutdown ack timeout names the
 producer. A use-after-free becomes a loud timeout.
 
-Cost: one `AtomicU32` and one signal per leased signal, nothing for signals
-that opt out. `lease` is sync; `open` is async; both record the coupling, and
-the diagram tool draws them as their own edge kinds.
+Cost: one `AtomicU32` and one signal per leased signal, one `AtomicU32` of
+reader count per `Backed` gate (the `Open` guard is a wrapper around the
+signal reference, nothing more), and nothing for signals that opt out.
+`lease` is sync; `open` is async; both record the coupling, and the diagram
+tool draws them as their own edge kinds.
 
 ## Ordering that lives entirely in the couplings
 

@@ -165,9 +165,9 @@ checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-supervisor"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7abd67a5536680a467429eb4a782414337668267b712131f27bc1538cbdf1485"
+checksum = "6bcb763ce684f40378fe58c81c35a6d5a38daf61f2ee703f548e00ca1af6061c"
 dependencies = [
  "embassy-executor",
  "embassy-futures",
@@ -182,9 +182,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-macros"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56433d0eb4c1bfd8d8841852212d2643cf64e3f4119c1f9cefeaa58820825e97"
+checksum = "ed331f04b177b0aba21b8bd80f461b67f720b4313366a03937697f88ecfcf738"
 dependencies = [
  "embassy-supervisor-syntax",
  "proc-macro2",
@@ -226,9 +226,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-syntax"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b351918265fafab2ed12d0d126aac86ff10ca8981c756553b4ff546cb2503262"
+checksum = "7c7514f7d519d2a2a7547052284a6c6067ab1c967638d6fe53950f609df4f386"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -237,9 +237,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-tools"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09fb84ad43d146af2504f20fbc66081bf8c0258041d02dbb3fc206c89af7ae81"
+checksum = "73a11fbbb623b16e5f4cce64eabee5a88aabe73c719141208fb05c4c41199eb5"
 dependencies = [
  "embassy-supervisor-syntax",
  "flate2",

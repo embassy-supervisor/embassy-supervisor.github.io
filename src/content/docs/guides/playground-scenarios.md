@@ -239,8 +239,12 @@ failures, two different blast radii.
 
 Breaker failure (`PROT_50BF`) is `OnDemand`, armed by the first trip, as a
 real relay arms it. Autoreclose (`PROT_79`) is `Pause`, a state machine that
-must survive across cycles. Several protection functions write the same
-`TRIP` signal: any of them can force the safe state, none owns it.
+must survive across cycles. `TRIP` is a **`veto`** write from both protection
+functions: a `VetoGate` where each writer holds its own contributor bit, any
+bit forces the safe state and none owns it. A stopped writer's bit stays up:
+trip on differential, then lose PTP, and the bound-stopped function keeps the
+breaker open until it runs again and re-evaluates. Fail-safe by construction,
+not by convention.
 
 Sources:
 [sampled values explained](https://scadaprotocols.com/iec-61850-sampled-values-explained/) ·
@@ -338,7 +342,7 @@ limit, continuously re-divided across the active charging sessions. This is
 the EVerest / OCPP smart-charging shape.
 
 When a claimant joins, every grant **shrinks instantly**; when one leaves,
-grants **grow back slowly**, never as a step. Sessions are a pool re-dividing
+grants **grow back slowly**, never in one jump. Sessions are a pool re-dividing
 the budget as it scales; the RCD and thermal monitors bypass the allocator
 entirely: a ground fault or an overheat is not negotiable.
 
@@ -348,9 +352,13 @@ transmitter bound-stops while transaction events queue in a
 precedes its stop, and that order must survive the outage. Reconnect and the
 backlog drains.
 
-One honest gap: the budget allocator has to be a *behavior*, because
-`resources:` kinds are lend, consume and shared; none of them is "a number
-split N ways".
+The site limit is a **`divisible` resource**: `ENERGY_MGR` provides the
+`Budget`, each session's `Claimant` states its want while a car is connected,
+and the allocator re-divides under `ShrinkFastGrowSlow`: a cut lands at once,
+an increase moves at most 4 A per period. Stop a session from the outside and
+the supervisor releases its share on the shutdown ack, the worker never touches
+its claim, so a dead session never strands its amps. A derate is a re-provide
+with less.
 
 Sources:
 [EVerest (LF Energy)](https://lfenergy.org/projects/everest/) ·

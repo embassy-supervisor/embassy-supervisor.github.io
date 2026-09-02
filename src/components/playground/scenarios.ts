@@ -11,7 +11,8 @@ export type ButtonAction =
 
 export interface DeviceSpec {
   kind: 'slider' | 'switch' | 'dial' | 'lease' | 'button' | 'gauge';
-  /** Node name (set_input target); signal name for `lease` and `gauge`. */
+  /** Node name (set_input target); signal name for `lease` and value/depth
+   *  gauges, a node for `grant` gauges, a resource for `granted`/`capacity`. */
   target: string;
   label: string;
   hint?: string;
@@ -24,8 +25,9 @@ export interface DeviceSpec {
   offLabel?: string;
   /** button: what pressing it fires. */
   action?: ButtonAction;
-  /** gauge: which signal channel it reads (default 'value'). */
-  source?: 'value' | 'depth';
+  /** gauge: what it reads (default 'value'). `value`/`depth` read a signal,
+   *  `grant` a node's budget share, `granted`/`capacity` a divisible resource. */
+  source?: 'value' | 'depth' | 'grant' | 'granted' | 'capacity';
   unit?: string;
 }
 
@@ -811,9 +813,9 @@ export const scenarios: Scenario[] = [
     title: 'Substation protection IED',
     group: 'systems',
     mechanisms:
-      'two planes with asymmetric failure, ready bound on PTP lock, ready_on_write sample alignment, OnDemand breaker-failure arming, Pause autoreclose, min:0 MMS sessions, distributed veto on the trip signal',
+      'two planes with asymmetric failure, ready bound on PTP lock, ready_on_write sample alignment, OnDemand breaker-failure arming, Pause autoreclose, min:0 MMS sessions, a real VetoGate on the trip signal',
     blurb:
-      'An IEC 61850 relay whose two networks fail differently. Differential protection needs matching time sync, so losing PTP bound-stops it while overcurrent keeps protecting. Drop the station bus instead and the protection plane never moves: SCADA goes blind, the relay keeps tripping. Several protection functions write the same TRIP signal: any can force the safe state, none owns it.',
+      'An IEC 61850 relay whose two networks fail differently. Differential protection needs matching time sync, so losing PTP bound-stops it while overcurrent keeps protecting. Drop the station bus instead and the protection plane never moves: SCADA goes blind, the relay keeps tripping. TRIP is a veto gate: each protection function asserts its own bit, any bit forces the safe state, none owns it, and a function that bound-stops with its bit up keeps the breaker open until it runs again: fail-safe by construction.',
     planes: {
       'Process bus': ['SV_RX_MU1', 'SV_RX_MU2', 'SV_RX_MU3', 'SV_ALIGN', 'PROT_5051', 'PROT_87', 'PROT_50BF', 'PROT_79', 'TRIP_LOGIC', 'GOOSE_PUB'],
       Station: ['STATION_LINK', 'MMS', 'DIST_REC', 'SUPERVISION'],
@@ -841,12 +843,12 @@ export const scenarios: Scenario[] = [
     node PROT_5051 = Terminate, executor: PROCESS_BUS,
         deps: [SV_ALIGN ready], slot_timeout: 3000,
         task: crate::prot::overcurrent_task,
-        reads: [signals::PHASORS], writes: [signals::TRIP observed];
+        reads: [signals::PHASORS], writes: [signals::TRIP veto observed];
 
     node PROT_87 = Terminate, executor: PROCESS_BUS,
         deps: [SV_ALIGN ready, PTP_SLAVE ready bound], slot_timeout: 3000,
         task: crate::prot::differential_task,
-        reads: [signals::PHASORS], writes: [signals::TRIP observed];
+        reads: [signals::PHASORS], writes: [signals::TRIP veto observed];
 
     node PROT_50BF = OnDemand, executor: PROCESS_BUS,
         task: crate::prot::breaker_failure_task,
@@ -889,11 +891,11 @@ export const scenarios: Scenario[] = [
       PTP_SLAVE: { kind: 'link', initially_up: true },
       'crate::sv::rx_task': { kind: 'periodic', period_ms: 100 },
       SV_ALIGN: { kind: 'pipeline', work_ms: 100 },
-      PROT_5051: { kind: 'control_loop', period_ms: 150 },
-      PROT_87: { kind: 'control_loop', period_ms: 150 },
+      PROT_5051: { kind: 'veto_writer', period_ms: 150 },
+      PROT_87: { kind: 'veto_writer', period_ms: 150 },
       PROT_50BF: { kind: 'control_loop', period_ms: 200 },
       PROT_79: { kind: 'control_loop', period_ms: 400 },
-      TRIP_LOGIC: { kind: 'pipeline', work_ms: 150 },
+      TRIP_LOGIC: { kind: 'veto_sink', period_ms: 150 },
       GOOSE_PUB: { kind: 'pipeline', work_ms: 100 },
       STATION_LINK: { kind: 'link', initially_up: true },
       MMS: { kind: 'session', busy_ms: 400 },
@@ -901,6 +903,24 @@ export const scenarios: Scenario[] = [
       SUPERVISION: { kind: 'control_loop', period_ms: 300 },
     },
     devices: [
+      {
+        kind: 'switch',
+        target: 'PROT_5051',
+        label: 'Overcurrent pickup',
+        onLabel: 'tripping',
+        offLabel: 'reset',
+        initial: 0,
+        hint: "asserts this function's bit of the TRIP veto gate; the trip matrix publishes GOOSE while any bit is up",
+      },
+      {
+        kind: 'switch',
+        target: 'PROT_87',
+        label: 'Differential pickup',
+        onLabel: 'tripping',
+        offLabel: 'reset',
+        initial: 0,
+        hint: 'trip, then lose PTP: the bound-stopped function cannot release its bit, so the trip holds',
+      },
       {
         kind: 'switch',
         target: 'PTP_SLAVE',
@@ -1155,7 +1175,7 @@ export const scenarios: Scenario[] = [
     node CI = Terminate, task: crate::cfe::ci_task,
         writes: [signals::CMDS observed];
 
-    node TO = Terminate, deps: [COMM ready bound], slot_timeout: 3000,
+    node TO = Terminate, deps: [COMM ready bound], slot_timeout: 1000,
         task: crate::cfe::to_task,
         reads: [signals::DOWN];
 
@@ -1257,9 +1277,9 @@ export const scenarios: Scenario[] = [
     title: 'EV charging site controller',
     group: 'systems',
     mechanisms:
-      'divisible budget allocator (shrink fast, grow slow), session pool re-dividing the site limit, backpressure store-and-forward behind the CSMS link, privileged monitors bypassing the allocator',
+      'divisible site budget (a real Budget: FairShare under ShrinkFastGrowSlow), session pool claiming shares, supervisor-side release of a stopped session, derate by re-providing, backpressure store-and-forward behind the CSMS link, privileged monitors bypassing the allocator',
     blurb:
-      'One site power limit, continuously re-divided across active charging sessions. Plug a car in and every grant shrinks instantly; unplug and they grow back slowly. The OCPP client queues transaction events in causal order while the CSMS link is down, and the RCD and thermal monitors bypass the allocator: a fault is not negotiable. The budget allocator is a behavior, not a crate primitive (resources: has no "split N ways" kind).',
+      'One site power limit, continuously re-divided across active charging sessions. Plug a car in and every grant shrinks instantly; unplug and they grow back a step at a time. Stop a session from the outside and the supervisor releases its share on the shutdown ack: a dead session never strands its amps. The OCPP client queues transaction events in causal order while the CSMS link is down, and the RCD and thermal monitors bypass the allocator: a fault is not negotiable.',
     planes: {
       Site: ['GRID_METER', 'ENERGY_MGR', 'THERMAL', 'RCD'],
       Connectors: ['CP_STATE', 'EVSE'],
@@ -1271,8 +1291,8 @@ export const scenarios: Scenario[] = [
 
     node ENERGY_MGR = Terminate, deps: [GRID_METER],
         task: crate::site::energy_task,
-        reads: [signals::SITE_LOAD, signals::DERATE],
-        writes: [signals::AMPS_BUDGET observed];
+        provides: [SITE_AMPS],
+        reads: [signals::SITE_LOAD, signals::DERATE];
 
     node THERMAL = Terminate, task: crate::site::thermal_task,
         reads: [signals::SITE_LOAD],
@@ -1289,7 +1309,8 @@ export const scenarios: Scenario[] = [
         task: crate::evse::session_task,
         policy: DeferredShrink::new(Duration::from_secs(2)),
         min: 1, max: 4,
-        reads: [signals::AMPS_BUDGET, signals::PILOT],
+        resources: [SITE_AMPS: divisible],
+        reads: [signals::PILOT],
         writes: [signals::SESSION_EVTS observed];
 
     node SAF_Q = Terminate, deps: [EVSE],
@@ -1310,7 +1331,7 @@ export const scenarios: Scenario[] = [
 }`,
     behaviors: {
       GRID_METER: { kind: 'periodic', period_ms: 400 },
-      ENERGY_MGR: { kind: 'budget', total: 32, period_ms: 300 },
+      ENERGY_MGR: { kind: 'budget', total: 32, period_ms: 300, step: 4 },
       THERMAL: { kind: 'control_loop', period_ms: 800 },
       RCD: { kind: 'periodic', period_ms: 4000 },
       CP_STATE: { kind: 'periodic', period_ms: 500 },
@@ -1328,16 +1349,39 @@ export const scenarios: Scenario[] = [
         min: 0,
         max: 4,
         initial: 1,
-        hint: 'each active session re-divides the site budget',
+        hint: 'each connected car claims a share of SITE_AMPS; the allocator re-divides on every claim',
       },
       {
         kind: 'gauge',
-        target: 'signals::AMPS_BUDGET',
-        label: 'Per-session grant',
-        source: 'value',
+        target: 'EVSE#0',
+        source: 'grant',
+        label: 'First session grant',
         max: 32,
-        unit: 'A',
-        hint: 'shrinks the instant a claimant joins; grows back slowly',
+        unit: ' A',
+        hint: 'cut the instant a claimant joins; grows back 4 A per period, never in one jump',
+      },
+      {
+        kind: 'gauge',
+        target: 'SITE_AMPS',
+        source: 'granted',
+        label: 'Site limit in use',
+        max: 32,
+        unit: ' A',
+        hint: 'the sum of every grant, never above the provided capacity',
+      },
+      {
+        kind: 'slider',
+        target: 'ENERGY_MGR',
+        label: 'Site limit',
+        initial: 1,
+        hint: 'a derate re-provides the budget with less: every grant above its new share is cut at once',
+      },
+      {
+        kind: 'button',
+        target: 'EVSE#1',
+        label: 'Stop session 2',
+        action: { type: 'node', node: 'EVSE#1', op: 'stop' },
+        hint: 'a single-node stop: the supervisor releases its share on the shutdown ack, the worker never touches it',
       },
       {
         kind: 'switch',
@@ -1455,10 +1499,10 @@ export const scenarios: Scenario[] = [
   {
     id: 'demand',
     group: 'mechanisms',
-    mechanisms: 'Backed gates, demand-start through the control queue',
+    mechanisms: 'Backed gates, demand-start through the control queue, counted Open guards, producer retirement',
     title: 'Demand-driven bring-up',
     blurb:
-      'No deps: anywhere. Every producer sleeps disabled until the first gated read opens its signal; the open demand-starts it through the real control queue, cascading up the data chain in staggered waves you can watch arrive. Ordering emerges from data, not declarations.',
+      'No deps: anywhere. Every producer sleeps disabled until the first gated read opens its signal; the open demand-starts it through the real control queue, cascading up the data chain in staggered waves you can watch arrive. Ordering emerges from data, not declarations. Each open is a counted guard: stop the dashboard from its card and, three seconds after its last reader leaves, the twin store retires itself through the same queue, which lets go of the modem, which retires in turn: the waves run back down.',
     dsl: `supervisor_graph! {
     node MODEM = Terminate, task: crate::modem::modem_task,
         disabled, writes: [LINK_STATE observed];
@@ -1476,9 +1520,9 @@ export const scenarios: Scenario[] = [
         reads: [DEVICE_TWIN];
 }`,
     behaviors: {
-      MODEM: { kind: 'periodic', period_ms: 400 },
-      SENSOR_HUB: { kind: 'periodic', period_ms: 150 },
-      TWIN_STORE: { kind: 'gated_consumer', open: 'LINK_STATE', period_ms: 300 },
+      MODEM: { kind: 'periodic', period_ms: 400, retire_ms: 3000 },
+      SENSOR_HUB: { kind: 'periodic', period_ms: 150, retire_ms: 3000 },
+      TWIN_STORE: { kind: 'gated_consumer', open: 'LINK_STATE', period_ms: 300, retire_ms: 3000 },
       CLOUD_SYNC: { kind: 'gated_consumer', open: 'TELEMETRY', period_ms: 300, delay_ms: 2500 },
       DASHBOARD: { kind: 'gated_consumer', open: 'DEVICE_TWIN', period_ms: 500, delay_ms: 5000 },
     },

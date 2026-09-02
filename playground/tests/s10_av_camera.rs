@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration as StdDuration;
 
 use embassy_executor::{Executor, Spawner};
-use embassy_supervisor::{ControlOp, ResourceGate, try_request_control};
+use embassy_supervisor::{ControlOp, try_request_control};
 use embassy_supervisor_playground::{build, parse, registry};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;

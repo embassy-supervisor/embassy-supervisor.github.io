@@ -54,6 +54,9 @@ sequenceDiagram
 | `has_exited()` | true once the last instance's body returned; cleared by the next spawn's reset |
 | `set_detached(true)` | become self-managed from here on |
 | `adopt(&token)` | parked nodes: register a hand-spawned task for trace attribution |
+| `open(&SIG).await` | feature `data-deps`: run the signal's gate (start its producer if `Backed`) and hand back the counted `Open` guard; [Gated reads](/concepts/data-deps/) has the contract |
+| `retire(&SIG, cooldown).await` | feature `data-deps`: resolve once the signal's readers have been gone a whole cooldown, then withdraw readiness and request the node's own `Deactivate` |
+| `veto(&SIG)` | feature `veto`: this writer's bit of a `VetoGate`; the gate latches until every contributor releases |
 
 The cancellable combinators return `Result<F::Output, Aborted>` and the
 pausable one `Result<F::Output, Resumed>`. Discarding the result

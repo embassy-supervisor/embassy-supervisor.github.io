@@ -56,6 +56,9 @@ Queries over the record are visitor-style: `GRAPH.writers_of(&entry, &mut
 from a node's `writes()`/`reads()` tables. The diagram tool draws the same
 edges.
 
+Entry markers may appear in any order (`observed beat` and `beat observed`
+are the same entry); `via <expr>` still qualifies `observed` and ends it.
+
 ## `observed` and `beat`: liveness without touching the task
 
 An entry marker can name an accessor whose result changes when the signal is
@@ -90,6 +93,40 @@ Two honest caveats:
   drains between sweeps reads identical and looks silent. Wrap it in the
   facade's `Counted`, whose token is the write count, before pairing
   `observed` with `beat`.
+
+## `veto`: writes that latch a safe state
+
+Feature `veto`. Some writes are not observations but verdicts, and several
+independent judges may share one verdict. Wrap the signal in a
+`VetoGate<N>`, mark each writer's entry `veto`, and the macro gives every
+writer its own contributor slot, numbered in declaration order and
+capacity-checked at compile time. A writer moves only its own bit:
+
+```rust
+pub static TRIP: VetoGate<8> = VetoGate::new();
+
+supervisor_graph! {
+    node PROT_5051  = Terminate, task: overcurrent,  discover, writes: [crate::TRIP veto];
+    node PROT_87    = Terminate, task: differential, discover, writes: [crate::TRIP veto];
+    node TRIP_LOGIC = Terminate, task: trip_logic,   discover, reads:  [crate::TRIP];
+}
+```
+
+The gate is asserted while any contributor holds it and releases only once
+every contributor has let go, so no writer can clear another's verdict: the
+actuator parks on `wait_asserted()` / `wait_released()` and rearms between
+them. The fail-safe property falls out of the wiring: a writer that is
+bound-stopped or crashes with its bit up leaves the gate asserted. Release
+is explicit, never a side effect of a writer disappearing. All writers of
+one gate must live in the same graph and spell it one way.
+
+Under `coupling-observe`, a `veto observed beat` entry counts the gate's
+flips, so the rate of verdicts is the writer's heartbeat.
+
+*Run it:* the **Substation protection IED** scenario in the
+[playground](/guides/playground-scenarios#substation-protection-ied) runs
+two protection functions against one trip gate, with pickup switches and a
+breaker that only closes when every bit is down.
 
 ## `#[dataflow]`: the record derived from the code
 
@@ -141,9 +178,11 @@ pub fn set_period_ms(node: &'static TaskNode, ms: i32) {
 
 Verbs are inherent methods on `TaskNode`, so an extension trait can register
 more (`#[dataflow(read(subscribe), write(publish))]`): the scan needs the
-name and the direction, both stated, both checked. Built-ins stay
-recognized; redefining one is an error. A house verb set wants a wrapping
-attribute macro on your side, which is the main ergonomic cost of this tier.
+name and the direction, both stated, both checked. The built-in set covers
+the access verbs plus `retire` and `veto`, so bodies calling those through
+the node derive correctly; redefining a built-in is an error. A house verb
+set wants a wrapping attribute macro on your side, which is the main
+ergonomic cost of this tier.
 
 The pass-through pair exists for the two patterns a value verb cannot
 express: read-modify-write (`node.writer(&COUNT).fetch_add(1, ..)`) and
@@ -170,7 +209,6 @@ flowchart TD
     HEARTBEAT["HEARTBEAT<br/>Pause · task · @HIGH · beat 15 s"]:::paused
     OTA["OTA<br/>Terminate · task · control-started"]:::disabled
     BENCH["BENCH<br/>Terminate · task · @CORE1"]:::disabled
-
     HEARTBEAT -. "spawn · ready bound" .-> BENCH
 
     STACK[/"net::STACK"/]:::signal
