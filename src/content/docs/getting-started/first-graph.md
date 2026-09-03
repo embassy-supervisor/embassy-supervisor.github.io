@@ -19,6 +19,7 @@ config:
   layout: elk
 ---
 flowchart TD
+  accDescr: The finished two-node graph, with the sensor's enable pin and the cell it publishes
   n_SENSOR["SENSOR<br/>Terminate · task · beat 1000"]
   n_UPLOADER["UPLOADER<br/>Terminate · task"]
 

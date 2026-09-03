@@ -1,0 +1,6 @@
+# The sitemap is the only thing here that is not the default. Starlight emits
+# it as sitemap-index.xml; there is no sitemap.xml.
+User-agent: *
+Allow: /
+
+Sitemap: https://embassy-supervisor.github.io/sitemap-index.xml

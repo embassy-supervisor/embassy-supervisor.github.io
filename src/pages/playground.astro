@@ -8,6 +8,9 @@ import '../styles/theme.css';
 
 const base = import.meta.env.BASE_URL;
 const ogImage = new URL(`${base}og.png`, Astro.site).href;
+const pageUrl = new URL(`${base}playground/`, Astro.site).href;
+const description =
+  'Type a supervisor_graph! declaration and run it: the real embassy-supervisor runtime compiled to WebAssembly, with live graph, logs and virtual time.';
 ---
 
 <html lang="en">
@@ -16,19 +19,28 @@ const ogImage = new URL(`${base}og.png`, Astro.site).href;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <ThemeBootstrap />
-    <meta
-      name="description"
-      content="Type a supervisor_graph! declaration and run it: the real embassy-supervisor runtime compiled to WebAssembly, with live graph, logs and virtual time."
-    />
+    <meta name="description" content={description} />
     <title>Playground · embassy-supervisor</title>
     <link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Hand-written page, so it repeats what Starlight gives the docs routes. -->
+    <link rel="canonical" href={pageUrl} />
     <meta property="og:title" content="embassy-supervisor playground" />
-    <meta
-      property="og:description"
-      content="Run a real supervised task graph in your browser."
-    />
+    <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content={pageUrl} />
+    <meta property="og:site_name" content="embassy-supervisor" />
+    <meta property="og:locale" content="en" />
     <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="embassy-supervisor: run-time supervision for bare-metal async Rust"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="embassy-supervisor playground" />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
   </head>
   <body>
     <div class="pg-page">

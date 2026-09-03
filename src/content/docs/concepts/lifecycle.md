@@ -18,6 +18,7 @@ and three cross-cutting flags cover everything.
 
 ```mermaid
 stateDiagram-v2
+    accDescr: The states a node moves through, and the transition that causes each
     direction LR
     [*] --> Running : start (dep order)
     Running --> Stopped : stop / teardown<br/>Terminate: exits

@@ -13,6 +13,7 @@ of it.
 
 ```mermaid
 sequenceDiagram
+    accDescr: One task body from spawn through readiness to the shutdown ack
     autonumber
     participant S as Supervisor
     participant T as Task body

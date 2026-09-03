@@ -10,6 +10,21 @@ const base = import.meta.env.BASE_URL;
 // Social cards need absolute URLs; resolve against the configured site.
 const ogImage = new URL(`${base}og.png`, Astro.site).href;
 const ogUrl = new URL(base, Astro.site).href;
+const REPO = 'https://github.com/cedrivard/embassy-supervisor';
+const description =
+  'Run-time supervision for bare-metal async Rust: ordered bring-up, gated spawning, runtime control, declared dataflow and tracing for embassy task graphs.';
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareSourceCode',
+  name: 'embassy-supervisor',
+  description,
+  codeRepository: REPO,
+  url: ogUrl,
+  programmingLanguage: { '@type': 'ComputerLanguage', name: 'Rust' },
+  license: 'https://spdx.org/licenses/MIT.html',
+  runtimePlatform: 'embassy (bare-metal async Rust)',
+  author: { '@type': 'Person', name: 'Cedric Rivard' },
+};
 const rustSource = `executor HIGH;
 executor CORE1;
 
@@ -109,19 +124,18 @@ const highlightedB = highlight(rustSourceB);
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <ThemeBootstrap />
-    <meta
-      name="description"
-      content="Run-time supervision for bare-metal async Rust: ordered bring-up, gated spawning, runtime control, declared dataflow and tracing for embassy task graphs."
-    />
-    <title>embassy-supervisor</title>
+    <meta name="description" content={description} />
+    <title>embassy-supervisor: run-time supervision for async Rust firmware</title>
     <link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- This page is hand-written rather than a Starlight route, so everything
+         Starlight emits for the docs pages has to be repeated here. -->
+    <link rel="canonical" href={ogUrl} />
     <meta property="og:title" content="embassy-supervisor" />
-    <meta
-      property="og:description"
-      content="Run-time supervision for bare-metal async Rust firmware."
-    />
+    <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={ogUrl} />
+    <meta property="og:site_name" content="embassy-supervisor" />
+    <meta property="og:locale" content="en" />
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -130,6 +144,13 @@ const highlightedB = highlight(rustSourceB);
       content="embassy-supervisor: run-time supervision for bare-metal async Rust"
     />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="embassy-supervisor: run-time supervision for async Rust firmware"
+    />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   </head>
   <body>
     <div class="home">
@@ -153,8 +174,8 @@ const highlightedB = highlight(rustSourceB);
       <main id="main">
         <section class="home-hero">
           <div>
-            <p class="home-kicker">Run-time supervision for async Rust firmware</p>
-            <h1>The <em>graph</em> wires static and runtime coupling to fit any design.</h1>
+            <h1 class="home-kicker">Run-time supervision for async Rust firmware</h1>
+            <p class="home-headline">The <em>graph</em> wires static and runtime coupling to fit any design.</p>
             <p class="home-lede">
               <code class="home-lede-crate">embassy-supervisor</code> is
               run-time supervision for complex embedded systems. Model the

@@ -886,13 +886,14 @@ figure.graph .cluster rect {
 .home-kicker {
   font-family: var(--sl-font-mono);
   font-size: 0.74rem;
+  font-weight: 400;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--sup-cyan);
   margin: 0 0 1.1rem;
 }
 
-.home-hero h1 {
+.home-headline {
   font-size: clamp(2.1rem, 4.4vw, 3.2rem);
   line-height: 1.08;
   margin: 0 0 1.1rem;
@@ -901,7 +902,7 @@ figure.graph .cluster rect {
   color: var(--sup-heading);
 }
 
-.home-hero h1 em {
+.home-headline em {
   font-style: normal;
   color: var(--sup-cyan);
 }

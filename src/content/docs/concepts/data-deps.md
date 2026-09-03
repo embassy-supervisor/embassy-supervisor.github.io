@@ -103,6 +103,7 @@ that comes back up calls `reopen`.
 
 ```mermaid
 sequenceDiagram
+    accDescr: A producer waits for every lease holder to drop before freeing the backing
     autonumber
     participant P as Producer
     participant L as Leased signal
