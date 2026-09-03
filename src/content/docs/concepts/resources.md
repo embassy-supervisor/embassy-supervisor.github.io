@@ -125,9 +125,9 @@ fixed steps). An unprovided budget fails bring-up as `ResourceMissing`,
 like any slot. The release rule is the point: a stopped holder never
 strands its share. Every stop path releases the holder's slot, including a
 holder that misses its shutdown ack; only a `Pause` park keeps the claim,
-because the parked task is coming back. The budget costs about `44 + 16*K`
-bytes of static RAM for `K` holders, and nothing per node but a claims
-pointer.
+because the parked task is coming back. The budget costs about `28 + 16*K`
+bytes of static RAM for `K` holders; per node the graph adds one claims
+slice pointer to the flash config, claimant or not.
 
 *Run it:* the **EV charging site controller** scenario in the
 [playground](/guides/playground-scenarios#ev-charging-site-controller) runs
