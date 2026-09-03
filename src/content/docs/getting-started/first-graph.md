@@ -14,16 +14,24 @@ producing. Around a hundred lines, and every idea generalizes.
 The finished graph:
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart TD
-    accDescr: The two-node graph this page builds, grown shape
-    SENSOR["SENSOR<br/>Terminate · task · beat 1000 ms"]:::task
-    UPLOADER["UPLOADER<br/>Terminate · task"]:::task
+  n_SENSOR["SENSOR<br/>Terminate · task · beat 1000"]
+  n_UPLOADER["UPLOADER<br/>Terminate · task"]
 
-    SENSOR -- "ready" --> UPLOADER
+  n_SENSOR -- "ready" --> n_UPLOADER
 
-    SENSOR_EN@{ shape: notch-rect, label: "SENSOR_EN" }
-    SENSOR_EN --> SENSOR
-    class SENSOR_EN resource;
+  s_tasks__LATEST[/"tasks::LATEST"/]
+  n_SENSOR -. "discovered" .-> s_tasks__LATEST
+  s_tasks__LATEST -. "discovered" .-> n_UPLOADER
+  class s_tasks__LATEST signal;
+
+  r_SENSOR_EN@{ shape: notch-rect, label: "SENSOR_EN" }
+  r_SENSOR_EN --> n_SENSOR
+  class r_SENSOR_EN resource;
 ```
 
 ## 1. The workers
@@ -37,6 +45,8 @@ yourself. The graph declaration stamps that wrapper for you.
 // src/tasks.rs
 use embassy_supervisor::TaskNode;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::watch::Watch;
+use embassy_time::Instant;
 
 #[derive(Clone, Copy)] // Watch hands receivers their own copy
 pub struct Sample {
@@ -44,39 +54,41 @@ pub struct Sample {
     pub at_ms: u64,
 }
 
-// The shared cell both tasks communicate through. It exists from boot, so it
-// is a plain static, not a resource.
-pub static LATEST: embassy_sync::watch::Watch<CriticalSectionRawMutex, Sample, 2> =
-    embassy_sync::watch::Watch::new();
+// The cell the sensor writes and the uploader reads. It exists from boot, so
+// it is a plain static, not a resource. One receiver: the uploader.
+// `pub` keeps this page short; section 7 says what to do in a real firmware.
+pub static LATEST: Watch<CriticalSectionRawMutex, Sample, 1> = Watch::new();
 
 pub async fn sensor_task(node: &'static TaskNode) {
-    // In a real firmware this is your driver init: I2C, SPI, calibration.
-    let mut dev = sensor_driver_init().await;
+    // Cancel-safe body: stops at the next await, returns on shutdown.
+    let _aborted = node
+        .run_cancellable(async {
+            // In a real firmware this is your driver init: I2C, SPI, calibration.
+            let mut dev = sensor_driver_init().await;
 
-    // We are producing: dependents waiting on our readiness may start now.
-    node.set_ready();
-    let tx = LATEST.sender();
+            // We are producing: dependents waiting on our readiness may start.
+            node.set_ready();
+            let tx = LATEST.sender();
 
-    loop {
-        // Race the work against a shutdown request, and ack on cancel.
-        match node
-            .run_cancellable_acked(dev.sample())
-            .await
-        {
-            Ok(raw) => tx.send(Sample { raw, at_ms: embassy_time::Instant::now().as_millis() }),
-            Err(_aborted) => return, // shutdown: the ack already happened
-        }
-    }
+            loop {
+                let raw = dev.sample().await;
+                tx.send(Sample { raw, at_ms: Instant::now().as_millis() });
+            }
+        })
+        .await;
 }
 
 pub async fn uploader_task(node: &'static TaskNode) {
-    let mut receiver = LATEST.receiver().unwrap();
-    loop {
-        match node.run_cancellable_acked(receiver.changed()).await {
-            Ok(sample) => upload(sample).await, // your transport here
-            Err(_aborted) => return,
-        }
-    }
+    let mut rx = LATEST.receiver().unwrap();
+
+    let _aborted = node
+        .run_cancellable(async {
+            loop {
+                let sample = rx.changed().await;
+                upload(sample).await; // your transport here
+            }
+        })
+        .await;
 }
 ```
 
@@ -84,33 +96,37 @@ pub async fn uploader_task(node: &'static TaskNode) {
 stands for your driver bring-up, the second for your transport. Both are
 ordinary `async fn`s; nothing about them is supervised.
 
-Two idioms to internalize now:
+Two idioms to remember:
 
-- **`run_cancellable_acked(work)`** races the future you pass against a
-  shutdown request. On shutdown it cancels the work and completes the
-  handshake for you, so returning from the function is the whole cleanup.
-- **`set_ready()`** asserts that this task is actually serving. It is what a
-  `ready` dependency waits for, explained below.
+- **`run_cancellable(body)`** wraps the worker body so it can stop at the next
+  await. On shutdown the body is dropped and the call returns `Err(Aborted)`.
+  Returning completes the stop handshake.
+- **`set_ready()`** tells dependents this task is ready to serve.
 
 ## 2. The declaration
 
-The graph is one macro invocation. Each item is a single line of
-comma-separated clauses ending in `;`.
+The graph is one macro invocation. Each item is a run of comma-separated
+clauses ending in `;`.
 
 ```rust
 // src/main.rs
 embassy_supervisor::supervisor_graph! {
     node SENSOR = Terminate, task: crate::tasks::sensor_task;
-    node UPLOADER = Terminate, deps: [SENSOR ready], task: crate::tasks::uploader_task;
+    node UPLOADER = Terminate, deps: [SENSOR ready], slot_timeout: 1000,
+        task: crate::tasks::uploader_task;
 }
 ```
 
-Read it as: two tasks; `UPLOADER` depends on `SENSOR`; the `ready` marker
-means the uploader's spawn additionally waits for the sensor's `set_ready()`
-call. The mode `Terminate` means both are started at boot and respawned after
-a wake cycle.
+The `ready` marker makes `UPLOADER` wait for `SENSOR` to call
+`set_ready()`. `Terminate` starts both at boot and restarts them after a wake
+cycle.
 
-That invocation expands to statics at the call site:
+The wait uses the **dependent's** `slot_timeout`. The default 100 ms suits
+resource slots filled before the graph starts, not driver init. Because the
+sensor may need longer, `UPLOADER` uses `slot_timeout: 1000`. A missed
+readiness deadline becomes a `ReadyDepTimeout` fault.
+
+The macro expands to statics at the call site:
 
 - `pub static SENSOR: TaskNode` and `pub static UPLOADER: TaskNode`,
 - `pub static GRAPH`, bundling the node slots, the dependency table and the
@@ -130,16 +146,15 @@ rest of the run.
 #[embassy_executor::task]
 async fn supervisor_task(spawner: embassy_executor::Spawner) {
     let sup = embassy_supervisor::Supervisor::new(&GRAPH);
-    // Brings SENSOR up, waits for its readiness, then spawns UPLOADER.
-    // Returns only on a fault; escalate as suits the product.
+    // Start the graph and keep driving it. Only returns on a fault.
     let fault = sup.run(&spawner).await;
-    panic!("supervisor: {}", fault);
+    defmt::panic!("supervisor: {}", fault);
 }
 ```
 
-`Supervisor::new` is infallible because the start order was already computed
-at compile time. `run()` is `start()` plus the driver loop; you can call the
-pieces separately when the driver must also watch other wake sources.
+`Supervisor::new` is computed at compile time, so it cannot fail. `run()`
+starts the graph and runs the driver loop. Split the pieces if the driver
+needs to watch other wake sources.
 
 ## 4. main
 
@@ -155,7 +170,7 @@ async fn main(spawner: embassy_executor::Spawner) {
     // Owned values reach nodes through resource slots, handed over before
     // the graph starts. Section 5 wires SENSOR_EN in exactly here.
 
-    spawner.spawn(supervisor_task(spawner).unwrap());
+    spawner.spawn(defmt::unwrap!(supervisor_task(spawner)));
 }
 ```
 
@@ -176,7 +191,7 @@ flowchart TD
     BOOT --> S
     S --> RDY
     RDY -- yes --> U
-    RDY -. "no, within slot_timeout<br/>then ReadyDepTimeout" .-> HOLD["spawn held"]:::disabled
+    RDY -. "not within UPLOADER's slot_timeout<br/>then ReadyDepTimeout" .-> HOLD["start faults"]:::disabled
 ```
 
 ## 5. Grow it: a resource
@@ -188,61 +203,124 @@ Declare a resource slot, and `main` fills it before the graph starts:
 embassy_supervisor::supervisor_graph! {
     node SENSOR = Terminate, task: crate::tasks::sensor_task,
         resources: [SENSOR_EN: embassy_rp::gpio::Output<'static>];
-    node UPLOADER = Terminate, deps: [SENSOR ready], task: crate::tasks::uploader_task;
+    node UPLOADER = Terminate, deps: [SENSOR ready], slot_timeout: 1000,
+        task: crate::tasks::uploader_task;
 }
 ```
 
 ```rust
-// main, after HAL init:
-SENSOR_EN.provide(Output::new(p.PIN_15, Level::High));
-spawner.spawn(supervisor_task(spawner).unwrap());
+// main, after HAL init. The pin starts low; raising it is the sensor's job.
+SENSOR_EN.provide(embassy_rp::gpio::Output::new(p.PIN_15, embassy_rp::gpio::Level::Low));
+spawner.spawn(defmt::unwrap!(supervisor_task(spawner)));
 ```
 
-The worker's signature gains the resource, after the node, as `&mut`:
+The worker's signature gains the resource, after the node, as `&mut`. The
+body is the one from section 1 with the pin around it:
 
 ```rust
-pub async fn sensor_task(
-    node: &'static TaskNode,
-    en: &mut embassy_rp::gpio::Output<'static>,
-) { /* ... */ }
+pub async fn sensor_task(node: &'static TaskNode, en: &mut embassy_rp::gpio::Output<'static>) {
+    en.set_high();
+
+    let _aborted = node
+        .run_cancellable(async {
+            let mut dev = sensor_driver_init().await;
+            node.set_ready();
+            let tx = LATEST.sender();
+            loop {
+                let raw = dev.sample().await;
+                tx.send(Sample { raw, at_ms: Instant::now().as_millis() });
+            }
+        })
+        .await;
+
+    // Cleanup runs here, before the resource returns to its slot.
+    en.set_low();
+}
 ```
 
-Now "the enable pin was not provided" cannot become a task panic: the spawn
-gate holds for up to the node's `slot_timeout` (100 ms by default) and then
-fails as a named fault. This is the pattern for every owned value: pins,
-driver objects, stream endpoints, network handles. Details and the
-`consume` and `shared` kinds are in [Resources](../concepts/resources/).
+`run_cancellable` lets the worker run cleanup before the shell finishes the
+stop handshake and returns the resource to its slot. The `_acked` variant,
+covered in the [task reference](../concepts/tasks/), completes the handshake
+inside the body instead.
+
+If `main` never provides the pin, the spawn gate times out after
+`slot_timeout` (100 ms by default) and reports a named fault instead of
+panicking. This pattern works for any owned value. See
+[Resources](../concepts/resources/) for `consume` and `shared` kinds.
 
 ## 6. Grow it: a heartbeat
 
 Add `beat_timeout:` to a node and its worker's activity becomes measurable:
 
 ```rust
-node SENSOR = Terminate, task: crate::tasks::sensor_task, beat_timeout: 1000;
+node SENSOR = Terminate, task: crate::tasks::sensor_task,
+    resources: [SENSOR_EN: embassy_rp::gpio::Output<'static>],
+    beat_timeout: 1000;
 ```
 
 The timeout is only the budget; the worker spends it by calling `node.beat()`
-where it has provably made progress:
+where it has provably made progress. One line in the loop:
 
 ```rust
 loop {
-    match node.run_cancellable_acked(dev.sample()).await {
-        Ok(raw) => {
-            node.beat(); // one completed conversion is progress
-            tx.send(Sample { raw, at_ms: embassy_time::Instant::now().as_millis() });
-        }
-        Err(_aborted) => return,
-    }
+    let raw = dev.sample().await;
+    node.beat(); // one completed conversion is progress
+    tx.send(Sample { raw, at_ms: Instant::now().as_millis() });
 }
 ```
 
-A node that declares `beat_timeout:` but never beats reads permanently stale
-one budget after it starts, which is why a node without a budget is opted out
-of policing entirely. With both halves in place, anywhere in the application,
-`SENSOR.is_stale(Duration::from_secs(2))` answers "is it running but
-wedged?": it returns false for a node that is merely stopped, and
-`is_running()` distinguishes the two. A health monitor can act on it. See
+A node without `beat_timeout:` is never policed. With it in place, the
+supervisor logs a warning the first time the sensor misses its budget.
+`SENSOR.is_stale(...)` then reports "running but wedged"; `is_running()`
+tells stopped and wedged apart. The application decides what to do. See
 [Health monitoring](../concepts/health/).
+
+## 7. Grow it: the dataflow
+
+`ready` only orders bring-up. It does not describe data exchange. To record
+that, add `#[embassy_supervisor::dataflow]` and access the cell through the
+node.
+
+```rust
+#[embassy_supervisor::dataflow]
+pub async fn sensor_task(node: &'static TaskNode, en: &mut embassy_rp::gpio::Output<'static>) {
+    // ...
+            let tx = node.writer(&LATEST).sender(); // the write is recorded
+    // ...
+}
+
+#[embassy_supervisor::dataflow]
+pub async fn uploader_task(node: &'static TaskNode) {
+    let mut rx = node.reader(&LATEST).receiver().unwrap(); // the read is recorded
+    // ...
+}
+```
+
+`writer` and `reader` pass the static through unchanged; the attribute notes
+the access. Add `discover` to the graph declaration to adopt the tables:
+
+```rust
+embassy_supervisor::supervisor_graph! {
+    node SENSOR = Terminate, task: crate::tasks::sensor_task, discover,
+        resources: [SENSOR_EN: embassy_rp::gpio::Output<'static>],
+        beat_timeout: 1000;
+    node UPLOADER = Terminate, deps: [SENSOR ready], slot_timeout: 1000,
+        task: crate::tasks::uploader_task, discover;
+}
+```
+
+Now the graph records that `SENSOR` writes `LATEST` and `UPLOADER` reads it.
+Because the call site is the declaration, the record stays in sync with the
+code. The cost is a few const tables in flash, none at run time. See
+[Dataflow](../concepts/dataflow/) for declared `reads:`/`writes:` lists and
+heartbeat markers.
+
+One simplification to undo in a real firmware: `LATEST` is `pub`, so other
+modules can write it without going through a node, and the graph will not
+see those writes. Keep the static private and expose accessors that take a
+node and carry `#[dataflow]`. Callers adopt them with `dataflow:
+[crate::tasks::publish]`. The full pattern is in
+[Dataflow](../concepts/dataflow/).
 
 ## Where to go next
 
@@ -250,3 +328,4 @@ wedged?": it returns false for a node that is merely stopped, and
 - [Lifecycle and modes](../concepts/lifecycle/): what `Terminate`, `Pause`
   and `OnDemand` actually do.
 - [Declaring the graph](../concepts/dsl/): every clause, with rules.
+- [Dataflow](../concepts/dataflow/): the declared, observed and derived tiers.
