@@ -168,6 +168,8 @@ class Diagrams {
       const svgEl = f.canvas.querySelector('svg');
       if (svgEl) {
         svgEl.removeAttribute('height');
+        const natural = svgEl.viewBox?.baseVal?.width;
+        if (natural) f.figure.style.setProperty('--graph-natural-w', `${natural}px`);
         f.figure.setAttribute('data-variant', variant);
         f.svg = svgEl;
         this.animate(svgEl);

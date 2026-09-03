@@ -2,6 +2,7 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
+import { rehypeTableScroll } from './src/plugins/rehype-table-scroll.mjs';
 
 // GitHub Pages org site: served at the domain root. Change both when the
 // site moves to a custom domain or a project-page repository.
@@ -12,6 +13,9 @@ export default defineConfig({
   site: SITE,
   base: BASE,
   trailingSlash: 'ignore',
+  markdown: {
+    rehypePlugins: [rehypeTableScroll],
+  },
   // mermaid is only ever reached through a dynamic import chain, so the dev
   // scanner can miss it; pinning it here keeps its optimized-deps URL valid
   // for the whole dev session instead of 504ing after a re-optimize.

@@ -464,6 +464,23 @@ export default function PlaygroundApp() {
     setBottomHeight(el.getBoundingClientRect().height + (e.key === 'ArrowUp' ? -24 : 24));
   };
 
+  useEffect(() => {
+    const narrow = window.matchMedia('(max-width: 1100px)');
+    const clear = () => {
+      if (!narrow.matches) return;
+      const main = mainRef.current;
+      if (main) {
+        main.style.height = '';
+        main.style.minHeight = '';
+        main.style.flex = '';
+      }
+      if (bottomRef.current) bottomRef.current.style.height = '';
+    };
+    clear();
+    narrow.addEventListener('change', clear);
+    return () => narrow.removeEventListener('change', clear);
+  }, []);
+
   const declOf = useCallback((name: string) => extractDecl(dsl, name), [dsl]);
 
   const clockMs = snapshot ? Math.round(snapshot.now_us / 1000) : 0;

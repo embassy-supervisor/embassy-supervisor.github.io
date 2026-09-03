@@ -585,6 +585,22 @@ figure.graph svg {
   height: auto;
 }
 
+/* On phones, stop scaling wide diagrams to fit. Let them scroll instead so
+   labels stay readable. `safe center` keeps narrow diagrams centered without
+   pushing wide ones past the left edge. --graph-natural-w is set by
+   scripts/mermaid.ts. */
+@media (max-width: 40rem) {
+  figure.graph .graph-canvas {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    justify-content: safe center;
+  }
+  figure.graph svg {
+    width: var(--graph-natural-w, 100%);
+    flex: none;
+  }
+}
+
 figure.graph .node {
   cursor: default;
   transition: opacity 180ms ease, filter 180ms ease;
@@ -740,6 +756,18 @@ figure.graph .cluster rect {
 
 .main-pane table code {
   white-space: nowrap;
+}
+
+/* Let wide tables scroll horizontally without sacrificing the full-width
+   column layout set above. The rehype wrapper handles the overflow. */
+.main-pane .table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.main-pane .table-scroll:focus-visible {
+  outline: 2px solid var(--sup-cyan);
+  outline-offset: 3px;
 }
 
 /* ---------------------------------------------------------------- cards */
@@ -2093,6 +2121,7 @@ figure.graph .cluster rect {
   .pg-main {
     grid-template-columns: 1fr;
     grid-auto-rows: minmax(300px, auto);
+    height: auto;
   }
   .pg-graph {
     min-height: 420px;
