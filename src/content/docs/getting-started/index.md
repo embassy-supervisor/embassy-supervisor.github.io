@@ -1,26 +1,35 @@
 ---
 title: What it is
-description:
-  Why an async firmware needs a supervision layer, what embassy-supervisor
-  gives you, and when to reach for it.
+description: "A declarative supervision layer for critical embedded systems: lifecycle orchestration, deterministic bring-up, runtime resilience, and observable control on any embassy target."
 ---
 
 <p class="eyebrow">Start</p>
 
-# What it is
+# Overview
 
-Writing firmware with Rust and [embassy](https://embassy.dev) feels great
-right up until the day your project has a radio, three sensors, a web
-endpoint, a power budget and an update path. Each piece is an easy `async fn`.
-The hard part is everything between them: which one starts first, what to do
-when a driver is not ready yet, who must stop before you can drop the network
-stack, and how any of that survives a sleep cycle or an OTA swap.
+- Embedded firmware has historically been built from super loops,
+  interrupts, or RTOS threads. As the number of communication stacks,
+  sensors, and control loops grows, the wiring between tasks becomes the
+  dominant problem.
 
-**embassy-supervisor is a small `no_std` library that takes over that
-coordination.** You describe your tasks and their relationships once, in a
-declaration the compiler checks, and a supervisor brings the graph up in
-order, hands each task what it needs, watches the connections between them,
-and takes it all down cleanly on demand.
+- embassy brings cooperative multitasking with Rust's `async/await` to
+  embedded. Tasks compile into state machines that yield on blocking I/O,
+  so a single executor can run many logical tasks without the stack
+  overhead of an RTOS thread.
+
+- **embassy-supervisor is the coordination layer for that model.** It lets
+  you declare the architecture of the whole firmware once: tasks, their
+  dependencies, the resources they share, the heartbeats that watch them,
+  and the control points that let the system react at runtime.
+
+- The compiler validates the static topology. The runtime brings the graph
+  up deterministically, reacts to failures, and exposes every node to
+  runtime control. Each capability is opt-in through Cargo, so the binary
+  contains only what the system uses.
+
+- It is built for products where the cooperative model must stay correct
+  under pressure: industrial controllers, automotive ECUs, FPV flight
+  stacks, protection relays, medical devices, and always-on gateways.
 
 ```mermaid
 flowchart LR
@@ -41,102 +50,88 @@ flowchart LR
     SUP <-. scales .-> POOL
 ```
 
-## What you get
+## Core capabilities
 
-- **A lifecycle per task.** `Terminate` tasks respawn fresh. `Pause` tasks
-  park while keeping a held resource such as an open bus or socket.
-  `OnDemand` tasks exist to be scaled by a pool.
-- **Runtime coupling.** The graph reacts to what its tasks do: generation
-  counters let a running consumer notice a restarted provider, `bound`
-  edges stop dependents whose provider goes down and bring them back with
-  it, and `restart` re-gates one subtree through its full gate sequence.
-- **Gated spawning.** A task that needs a value (a peripheral, a driver
-  object, a network handle) waits for it before spawning. A missing value is
-  a named, retryable error, not a panic inside a running task. Readiness can
-  even mean "actually producing", asserted by the first real output.
-- **Gated reads and counted holds.** Reading a signal can start its
-  producer and wait for it, and leased handles are counted so a producer
-  cannot free a value a consumer still holds.
-- **Runtime control.** Start, stop, restart, pause and resume any node or a
-  whole subtree, from a request handler, a button, or a test.
-- **A health sweep.** Per-node heartbeat budgets with stall and recovery
-  events, one report per incident, and a one-line status per node.
-- **Elastic worker pools.** Grow under load, shrink after a cooldown, within
-  a member budget declared in the graph.
-- **Declared dataflow.** Say who writes and who reads each shared signal, or
-  derive it from the code itself. The graph can answer "who is affected if
-  this producer restarts", feed heartbeats, and drive tooling.
-- **A footprint that tracks the declaration.** Code for structures your
-  graph lacks is compiled out, and only the macro is on by default: more
-  explicitness, smaller binaries.
-- **Tracing.** Per-task CPU time and poll counts, per-executor idle and
-  overhead, attributed by node name.
+- **Declarative system architecture.** Describe tasks, executors,
+  dependencies, resources, pools, and dataflow in a single checked
+  declaration. The graph becomes generated statics and compile-time
+  validation, not runtime discovery.
 
-Each of those is optional at build time. Only the dependency-ordered core
-plus the macro are on by default; everything else is a Cargo feature.
+- **Deterministic lifecycle orchestration.** `Terminate`, `Pause`,
+  `OnDemand`, and pool member modes give each task a contract the supervisor
+  honors: respawn, park with held state, or scale on demand. Bring-up order
+  is derived from `deps:` and enforced by the runtime.
 
-## What it is not
+- **Runtime coupling and resilience.** `bound` edges stop dependents with
+  their provider and restart them together. `restart` re-gates a subtree
+  through its full sequence. Generation counters let consumers detect
+  provider restarts without polling.
 
-- **Not a kernel.** There is no scheduler to replace, no per-task stacks, no
-  context switching. Tasks are ordinary embassy tasks; the supervisor only
-  starts, parks and stops them.
-- **Not a HAL.** It owns no pins, no clocks, no drivers. The same library
-  runs on any embassy target and on your desktop for tests.
-- **Not a panic catcher.** A panicking task is not captured or restarted;
-  that is not possible from a `forbid(unsafe_code)` no_std library. Pair the
-  supervisor with a hardware watchdog for crashes, and with its liveness
-  heartbeats for tasks that hang instead of crash.
-- **Not an allocator requirement.** The default build allocates nothing.
-  Heap-backed per-activation state exists, but only behind an explicit
-  feature.
+- **Resource safety and sharing.** `Backed` signals start their producer on
+  first demand. `lease()` and `drain()` count active readers so a resource
+  cannot be freed while held. `divisible` budgets split a quantity across
+  holders and reclaim a stopped holder's share. `veto` gates implement
+  fail-safe latching: a writer sets a safe state until every contributor
+  releases it.
 
-## Where it earns its keep
+- **Health and fault containment.** Per-node heartbeat budgets, stall
+  detection, and status reporting give the system a single source of truth
+  about liveness without modifying producer code. Dataflow declarations make
+  affected nodes explicit.
 
-When the hard part stops being each `async fn` and becomes the wiring
-between them, the graph earns its keep. A few shapes recur across very
-different products:
+- **Elastic scaling.** Pools grow under load and shrink after a cooldown,
+  bounded by a `min:`/`max:` member budget declared in the graph.
 
-- **Bring up the world in a known order.** A radio before its
-  subscribers, an OTA confirm before the next flash attempt, a network
-  stack before any HTTP server that uses it. `deps:` makes that order
-  the same string the compiler checks.
-- **Have a reader start its provider.** A `Backed` signal waits for its
-  producer on the first `open`, so the bring-up wave can wire a
-  consumer declared before its provider with no `deps:` edge. The wait
-  re-checks on every retry, so a producer that runs but stops
-  reporting ready does not pin the reader; a user-implemented
-  `Gated::ensure` can layer any other policy on top, including a wedge
-  check.
-- **Split one quantity without stranding it.** A `divisible` resource gives
-  each holder a slot in a graph-sized budget; the allocator re-divides as
-  holders come and go, and a stopped holder's share is released for the
-  rest. A `veto` write latches a fail-safe state until every contributor
-  has let go.
-- **Wake briefly, publish, sleep.** One or more drivers park in `Pause`
-  holding a resource, so the next wake is a millisecond resume rather
-  than a cold reinit.
-- **Answer "who is affected if X cycles" without reverse-engineering.**
-  The dataflow record keeps writers and readers next to deps, so the
-  graph answers the question directly and tooling stays accurate as
-  nodes come and go.
-- **Take a provider down without dropping a held handle.** `lease()`
-  counts every holder of a resource and `drain()` waits for them, so a
-  `Pause`'d driver never frees a `Stack` a serving task is still
-  reading.
-- **Heartbeat a task without touching the task.** A `writes: [X
-  observed beat]` entry turns a normal write into the node's heartbeat,
-  so the producer body stays oblivious to liveness.
-- **Stay on, absorb bursts.** An elastic pool grows workers when load
-  spikes and drains them during quiet times, bounded by the member
-  budget the graph declares.
-- **Take an update without dropping live requests.** When a flash needs
-  the network down, dependents drain through their gate sequence; a
-  failed update leaves the previous image running with consumers still
-  fed.
+- **Runtime control plane.** Start, stop, restart, pause, resume, and
+  teardown any node or subtree on command, from a request handler, a
+  power-coordinator, or a test harness.
 
-A single-task blinky does not need it. Two or three cooperating tasks
-with manual sequencing can go either way. Past that, the declaration
-usually pays for itself.
+- **Observable execution.** Per-task poll counts, CPU share, and
+  per-executor tracing attribute behavior to node names. The same traces
+  drive both the playground and on-target tooling.
+
+- **Composable and modular.** Split declarations with
+  `supervisor_fragment!` and compose them with `compose_graph!`. Only the
+  macro is on by default; every capability is a Cargo feature, so the binary
+  contains only the code the graph uses.
+
+## Built for critical systems
+
+The same concepts appear across very different product domains:
+
+- **Industrial PLCs and process controllers.** A fieldbus stack must come
+  up before the I/O tasks that use it, and a watchdog heartbeat must be
+  independent of the logic it protects. `deps:`, `ready` gating, and
+  `beat_timeout:` turn that into checked declarations.
+
+- **Automotive ECUs and powertrain modules.** A `Pause`'d driver holds a
+  bus configuration across sleep cycles so wake-up is a resume, not a cold
+  init. `control` verbs let a power-coordinator sequence shutdown before an
+  OTA flash and roll back to the previous image if the update fails.
+
+- **FPV and robotics flight stacks.** A radio link, IMU filter, estimator,
+  and motor controller run on different executor tiers with different
+  latency requirements. The supervisor assigns nodes to executors and
+  restarts a failed telemetry task without disturbing the control loop.
+
+- **Substation protection and grid IEDs.** A `veto` gate latches a trip
+  state until every protection element agrees to release it. `dataflow:`
+  records make the safety case auditable: every reader and writer is
+  declared.
+
+- **Medical devices and life-support peripherals.** Leased handles on a
+  shared driver ensure a measurement task cannot outlive the resource it
+  reads. `drain()` gives clean shutdown before sterilization, calibration,
+  or update.
+
+- **Telecom and network edge gateways.** An elastic pool of session
+  handlers absorbs registration bursts, then shrinks during quiet periods.
+  Runtime `restart` and `deactivate` cascades isolate a faulty modem
+  without restarting the whole gateway.
+
+Because each capability is behind a feature, a small sensor node can use
+only dependency ordering while a multi-core ECU uses the full set. The
+declaration scales with the product.
 
 ## Before you continue
 
@@ -149,7 +144,7 @@ You will get the most out of these docs if you are comfortable with:
   the model.
 - Basic embassy vocabulary: tasks, `Spawner`, `#[embassy_executor::task]`.
   The [embassy docs](https://embassy.dev/book/) are the place to start, and
-  no_std embedded background is in the
+  `no_std` embedded background is in the
   [Embedded Rust book](https://docs.rust-embedded.org/book/).
 
 None of that needs to be deep. This site links out to the details when they

@@ -1,133 +1,141 @@
 ---
 title: 'How the playground works'
-description: 'What is real in the playground, what is simulated, and which DSL clauses it executes.'
+description: 'What is real in the playground, what is simulated, and how to read the task panel.'
 ---
 
-The [playground](/playground) is not a mock-up. Your graph is parsed by the same
-`embassy-supervisor-syntax` crate the proc-macro uses and run by the real
-`embassy-supervisor` runtime: the crates.io release, compiled to WebAssembly
-on embassy-executor's wasm platform. Bring-up order, ready gating, pools, the
-control queue, the liveness monitor, gated reads and leases are the same code
-that runs on an MCU.
+The [playground](/playground) runs around 95% of the real code that
+runs on an MCU. Your graph is parsed by the same
+`embassy-supervisor-syntax` crate, then executed by the
+same `embassy-supervisor` runtime that ships to crates.io, compiled to
+WebAssembly on embassy-executor's `wasm` platform.
 
-Three things differ from firmware.
+Bring-up order, ready
+gating, executor scheduling, pools, the control queue, the liveness monitor,
+gated reads, leases, and producer retirement are the exact code paths a
+firmware binary uses.
 
-## Virtual time
+## Supervisor aspects that run unchanged
 
-The clock is embassy-time's mock driver: time advances only when the page
-advances it, which is what the pause / 1× / 10× / step controls drive. It
-advances in slices no coarser than 25 ms whatever the multiplier, so a 100 ms
-timer and a 500 ms timer never come due on the same poll: fast-forward
-compresses the wall clock, not the ratios between the rates you declared.
-Runs are deterministic and scrubbable, and timings model an MCU's *ordering*,
-not its microseconds. Nothing here measures poll latency; the
-[tracing guide](/concepts/trace/) covers that on hardware.
+The following design concepts all execute in the browser with the same
+semantics as on hardware:
 
-## Simulated task bodies
+- Task modes: `Terminate`, `Pause`, `OnDemand`.
+- Dependency ordering: `deps:`, including `ready` and `ready bound`
+  markers.
+- Named executors: `executor` clauses get real wasm executor instances.
+- Pools: member modes, `min:`/`max:` sizes, and `DeferredShrink`
+  cooldowns.
+- Resources: `resources:` gating, `provides:`, and the `consume` and
+  `divisible` markers.
+- Timeouts: `slot_timeout:`, `ack_timeout:`, `beat_timeout:`, and
+  `beat_window:`.
+- Liveness: beats, `observed`/`beat` markers, `ready_on_write`, and stale
+  reports.
+- Data dependencies: gated `open()` demand-start with counted `Open`
+  guards, producer `retire`, and `Leased` leases, drain, and reopen.
+- Control plane: activate, deactivate, restart cascades, `disabled` at
+  boot, and the `collateral` hold released by activate.
+- Single-node verbs: `start_node`, `stop_node`, `resume_node`.
+- Whole-graph verbs: `teardown`, `resume_pausable`,
+  `respawn_terminate` (the power coordinator's sleep/wake cycle).
+- `Pause` behavior: real park, ack, wait, and resume in place, keeping
+  what it took.
+- `detached` nodes set through `set_detached`.
+- Resource kinds: lend (taken and restored), `consume` (empty after exit;
+  a respawn fails closed until re-provided), `shared` (never taken), and
+  `divisible` (a real `Budget` per name, with holders claiming through a
+  `Claimant` and the allocator dividing via `FairShare` /
+  `ShrinkFastGrowSlow`; the supervisor releases a stopped holder's share
+  on its shutdown ack).
+- Veto gates: `writes: [X veto]` runs `X` as a `VetoGate`, with one
+  contributor bit per writer, `node.veto()` handling, and the reader's
+  `wait_asserted` / `wait_released`; a stopped writer's bit stays up.
+- Pool dependencies: `deps: [POOL]` resolves to the floor member, matching
+  the crate.
+- Trace recorders: genuine poll and pass counts, plus the current task
+  per executor.
+- Composition: `supervisor_fragment!` and `compose_graph!`.
 
-A static page cannot compile your Rust, so `task:` paths run on a generic
-interpreter instead, the approach SlintPad and the Typst web app take. Each
-worker's behavior (periodic producer, pipeline stage, pool server, bounded
-queue, budget allocator, session holder, control loop, veto writer, …) comes
-from the scenario's bindings, or is inferred from the node's shape when you
-add new nodes. The workers drive the real task-side APIs: `beat()`,
-`set_ready()`, `mark_busy()`, `provide()`, `open()`, `lease()`, `retire()`,
-`veto()`, a `Claimant`'s `want()` / `grant()`, a `Budget`'s `rebalance()`,
-`run_pausable()`, `set_detached()`, `report_status()`.
+## What a task is in the playground
 
-A `queue` behavior carries an explicit overflow policy (`reject`,
-`backpressure`, or `drop_oldest`) because the right answer depends on the
-other side: back-pressure what can slow down, drop what is driven by a clock
-you cannot pause. It drains one item per running consumer per tick, so the
-service rate is set by whoever takes from it: a backlog clears only once the
-readers outpace the producer, and stands while none of them runs. Stale reports are answered by the scenario's escalation map
-(`report`, `clear_ready`, `restart`, `deactivate`, `activate:OTHER`): the
-liveness monitor only reports, the application decides.
+In the playground, a task is a generic task that emulates a hardware
+component's behavior. A static page cannot compile your Rust, so `task:`
+paths do not run your real functions. Instead, each worker's behavior is
+provided by a generic interpreter, the same approach SlintPad and the
+Typst web app take. The behavior comes from the scenario's bindings, or
+is inferred from the node's shape when you add new nodes.
 
-A "crash" is an abrupt worker exit. A real `panic!` would take the whole wasm
-instance with it: the one place the browser is less forgiving than a
-supervised MCU.
+The generic task drives the real task-side APIs, including `beat()`,
+`set_ready()`, `provide()`, `open()`, `lease()`, `retire()`, `veto()`,
+and `report_status()`. The runtime underneath is identical to firmware;
+only the body is a stand-in.
 
-Two flags are worth reading carefully. Busy and ready clear on a node's
-*next* activation, not on stop, so the worker clears both on every stop path.
-A bound-stopped session no longer reads busy, and stopping a node withdraws
-its readiness. That is why a `ready bound` subtree follows a `stop_node`
-down.
+Because the worker body is generic, time is driven generically too. The
+playground uses embassy-time's mock driver: the clock advances only when
+the page advances it, through the pause, 1×, 10×, and step controls. It
+advances in slices no coarser than 25 ms, whatever the multiplier, so a
+100 ms timer and a 500 ms timer never come due on the same poll.
+Fast-forward compresses wall-clock time, not the ratios between the
+rates you declared. Runs are deterministic and scrubbable, and timings
+model an MCU's *ordering*, not its microseconds. Nothing here measures
+poll latency; the [tracing guide](/concepts/trace/) covers that on
+hardware.
 
-`DeferredShrink` only shrinks a pool when at least two members are idle, so a
-`min: 0` pool keeps one warm member. The pool meter's tooltip notes this.
-`min:` is only the shrink floor: bring-up starts the `Terminate` members, and
-the policy grows the rest on demand. The graph badges a floor that sits above
-the always-on count.
+A `queue` behavior illustrates the approach. It carries an explicit
+overflow policy (`reject`, `backpressure`, or `drop_oldest`) and drains
+one item per running consumer per tick, so the service rate is set by
+whoever takes from it. The interpreter fills in these semantics so the
+real supervisor code above it sees the same lifecycle it would on a
+chip.
 
-A `session` member routes the next client to whichever running member is
-idle, not by member number. The spare left by a shrink serves the next car,
-so the pool scales out again. A dial step down closes the highest-numbered
-session and never migrates a live one. A `control_loop` holds last-good only
-once its input has been quiet for several times the producer's own cadence
-(learned from the gaps between fresh reads, never under two periods), because
-a producer slower than the loop leaves a gap every cycle that is not news.
+## Interpreting the task panel
 
-## What executes
+The Tasks panel is a `top` for the graph. It shows one row per node,
+running or not, with the executor it lives on, its declared core,
+`report_status()` text, the busy flag, poll counts and durations, exec
+share, beat age, epoch and flags, and a per-executor strip naming the
+task currently mid-poll.
 
-The interpreter rebuilds the graph at runtime from the supervisor's public
-constructors, so most of the DSL executes for real:
+### Reading the columns
 
-| Executes for real | |
-| --- | --- |
-| modes | `Terminate`, `Pause`, `OnDemand` |
-| ordering | `deps:`, including `ready` and `ready bound` markers |
-| executors | named `executor` clauses get real (wasm) executor instances |
-| pools | member modes, `min:`/`max:` (integer literals), `DeferredShrink` cooldowns |
-| resources | `resources:` gating, `provides:`, the `consume` and `divisible` markers |
-| timeouts | `slot_timeout:`, `ack_timeout:`, `beat_timeout:`, `beat_window:` |
-| liveness | beats, `observed` / `beat` markers, `ready_on_write`, stale reports |
-| data-deps | gated `open()` demand-start with counted `Open` guards, producer retirement (`retire`), `Leased` leases / drain / reopen |
-| control | activate, deactivate, restart cascades, `disabled` at boot, the `collateral` hold released by activate |
-| single-node verbs | `start_node` / `stop_node` / `resume_node` (the graph cards and device buttons drive them) |
-| whole-graph verbs | `teardown`, `resume_pausable`, `respawn_terminate`: the power coordinator's sleep/wake cycle |
-| Pause | parks for real: ack, wait, resume in place, keeping what it took |
-| detached | `set_detached` (the power coordinator and self-test behaviors), shown as a chip and LED state |
-| resource kinds | lend (taken and restored, the holder shown), `consume` (empty after exit; a respawn fails closed until re-provided), `shared` (never taken), `divisible` (a real `Budget` per name: holders claim through a `Claimant`, the allocator divides with `FairShare` / `ShrinkFastGrowSlow`, and the supervisor releases a stopped holder's share on its shutdown ack) |
-| veto | `writes: [X veto]` runs `X` as a `VetoGate`: one contributor bit per writer, `node.veto()` handles, the reader's `wait_asserted` / `wait_released`; a stopped writer's bit stays up |
-| pool deps | `deps: [POOL]` resolves to the floor member, matching the crate |
-| trace | the recorders run: genuine poll and pass counts, the current task per executor |
-| composition | `supervisor_fragment!` + `compose_graph!` |
+- **Executor and core.** The executor name is real. The core column is
+  the placement the scenario declares, not a measured value. Wasm is
+  single-threaded, so every executor polls on the one browser thread;
+  `trace::set_core_id_fn` is the on-hardware mechanism. Treat the column
+  as a scheduling hint the supervisor would honor on a real chip.
 
-Clauses parsed but not executed are badged in the editor rather than rejected:
-`exit:` and `state:` (their storage is macro-generated), `discover` and
-`dataflow:` adoption lists (shown and linted, not run), `#[cfg(...)]` (treated
-as enabled), `serialized` (a compile-time rule about executors; every
-playground executor polls on the one browser thread), and non-literal pool
-expressions. A parked node (no `task:`) is
-spawned by the app only when a scenario binds a `power_coordinator` behavior
-to it; otherwise it is tracked but idle.
+- **Poll counts.** These are real counts from the supervisor's trace
+  recorder: how many times the node was polled and how many of those
+  polls did useful work.
 
-## The task panel
+- **Durations.** The mock clock stands still during a poll, so the panel
+  measures wasm wall time with `performance.now()` instead. Last and max
+  are browser milliseconds, not MCU microseconds.
 
-The Tasks panel is a `top` for the graph: one row per node, running or not,
-with its executor, declared core, `report_status()` text, busy flag, poll
-counts and durations, exec share, beat age, epoch and flags, plus a
-per-executor strip naming the task currently mid-poll.
+- **Beat age.** How long since the node last called `beat()`. This is
+  measured in virtual seconds, because beats are driven by the mock
+  clock.
 
-Two honesty notes. **Counts are real, durations are browser time.** The mock
-clock never advances during a poll, so the crate's own `exec_ticks` would read
-zero here; the playground stamps `performance.now()` around each poll instead,
-and the last/max poll columns show wasm wall time in your browser, never MCU
-microseconds. The [tracing guide](/concepts/trace/) covers measuring on
-hardware. **The core column is declared, not measured**: wasm is
-single-threaded, so it shows the placement the scenario declares
-(`trace::set_core_id_fn` is the on-hardware mechanism), and every executor
-polls on the one main thread. A `hog` marker means a single poll ran past
-50 ms of browser time: a task starving its executor, which is a different
-failure from a stale heartbeat (a task not making progress).
+- **Exec share.** The share of executor time the node has consumed
+  recently.
+
+- **Flags.** Epoch, busy, stale, and other state bits the supervisor
+  exposes. Busy and ready clear on the node's next activation, not on
+  stop.
+
+- **Hog marker.** A single poll that ran past 50 ms of browser time. It
+  means the task is starving its executor, which is a different failure
+  from a stale heartbeat (a task that is not making progress).
+
+The [tracing guide](/concepts/trace/) covers measuring real poll latency
+and durations on hardware.
 
 ## Tips
 
 - A `deps: [X ready]` edge waits at the gate for the default 100 ms
   `slot_timeout`: give consumers of slow providers an explicit
   `slot_timeout:`, or the supervisor will (correctly) fault the bring-up.
-- The wedge fault is honest: the node stops acking shutdown, so the next stop
-  or restart surfaces a real `ShutdownTimeout` fault.
+- The wedge fault is honest: the node stops acking shutdown, so the next
+  stop or restart surfaces a real `ShutdownTimeout` fault.
 - Every line in the logs pane is the supervisor's own `log` backend,
   timestamped in virtual seconds.

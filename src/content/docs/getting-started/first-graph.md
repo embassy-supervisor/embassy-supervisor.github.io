@@ -1,6 +1,6 @@
 ---
 title: Your first graph
-description: Declare a two-node graph, run it, and grow it with a resource and a readiness gate.
+description: Declare a two-node graph, run it, and grow it with a resource slot and a heartbeat.
 ---
 
 <p class="eyebrow">Start</p>
@@ -10,6 +10,21 @@ description: Declare a two-node graph, run it, and grow it with a resource and a
 This page builds a small but complete supervised firmware: a sensor task that
 publishes readings, and an uploader that must not start before the sensor is
 producing. Around a hundred lines, and every idea generalizes.
+
+The finished graph:
+
+```mermaid
+flowchart TD
+    accDescr: The two-node graph this page builds, grown shape
+    SENSOR["SENSOR<br/>Terminate · task · beat 1000 ms"]:::task
+    UPLOADER["UPLOADER<br/>Terminate · task"]:::task
+
+    SENSOR -- "ready" --> UPLOADER
+
+    SENSOR_EN@{ shape: notch-rect, label: "SENSOR_EN" }
+    SENSOR_EN --> SENSOR
+    class SENSOR_EN resource;
+```
 
 ## 1. The workers
 
@@ -23,6 +38,7 @@ yourself. The graph declaration stamps that wrapper for you.
 use embassy_supervisor::TaskNode;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
+#[derive(Clone, Copy)] // Watch hands receivers their own copy
 pub struct Sample {
     pub raw: i32,
     pub at_ms: u64,
@@ -63,6 +79,10 @@ pub async fn uploader_task(node: &'static TaskNode) {
     }
 }
 ```
+
+`sensor_driver_init()` and `upload()` are placeholders on purpose: the first
+stands for your driver bring-up, the second for your transport. Both are
+ordinary `async fn`s; nothing about them is supervised.
 
 Two idioms to internalize now:
 
@@ -128,17 +148,22 @@ A typical embassy `main` looks like this:
 ```rust
 #[embassy_executor::main]
 async fn main(spawner: embassy_executor::Spawner) {
-    // Optional: hand owned values to nodes through resource slots here.
-    // LED.provide(embassy_rp::gpio::Output::new(p.PIN_25, Level::Low));
+    // HAL init: this is the line that produces `p`, the Peripherals that
+    // section 5 takes the pin out of.
+    let p = embassy_rp::init(Default::default());
 
-    spawner.spawn(supervisor_task(spawner)).unwrap();
+    // Owned values reach nodes through resource slots, handed over before
+    // the graph starts. Section 5 wires SENSOR_EN in exactly here.
+
+    spawner.spawn(supervisor_task(spawner).unwrap());
 }
 ```
 
 Build it. If you got a dependency wrong, say `deps: [SENOSR]`, the compiler
-underlines the name. If you created a cycle, the const evaluation of `GRAPH`
-fails with the cycle named. Nothing waits until the device boots to discover
-a malformed graph.
+underlines the name and reports it as not a declared node or pool. If you
+created a cycle, the const evaluation of `GRAPH` panics with a `dependency
+cycle` message; the path is not printed, so read it off the declaration.
+Nothing waits until the device boots to discover a malformed graph.
 
 ```mermaid
 flowchart TD
@@ -168,9 +193,9 @@ embassy_supervisor::supervisor_graph! {
 ```
 
 ```rust
-// main, after the Peripherals split:
+// main, after HAL init:
 SENSOR_EN.provide(Output::new(p.PIN_15, Level::High));
-spawner.spawn(supervisor_task(spawner)).unwrap();
+spawner.spawn(supervisor_task(spawner).unwrap());
 ```
 
 The worker's signature gains the resource, after the node, as `&mut`:
@@ -196,8 +221,27 @@ Add `beat_timeout:` to a node and its worker's activity becomes measurable:
 node SENSOR = Terminate, task: crate::tasks::sensor_task, beat_timeout: 1000;
 ```
 
-Anywhere in the application, `SENSOR.is_stale(Duration::from_secs(2))` now
-answers "is it running but wedged?", and a health monitor can act on it. See
+The timeout is only the budget; the worker spends it by calling `node.beat()`
+where it has provably made progress:
+
+```rust
+loop {
+    match node.run_cancellable_acked(dev.sample()).await {
+        Ok(raw) => {
+            node.beat(); // one completed conversion is progress
+            tx.send(Sample { raw, at_ms: embassy_time::Instant::now().as_millis() });
+        }
+        Err(_aborted) => return,
+    }
+}
+```
+
+A node that declares `beat_timeout:` but never beats reads permanently stale
+one budget after it starts, which is why a node without a budget is opted out
+of policing entirely. With both halves in place, anywhere in the application,
+`SENSOR.is_stale(Duration::from_secs(2))` answers "is it running but
+wedged?": it returns false for a node that is merely stopped, and
+`is_running()` distinguishes the two. A health monitor can act on it. See
 [Health monitoring](../concepts/health/).
 
 ## Where to go next

@@ -156,13 +156,13 @@ const highlightedB = highlight(rustSourceB);
             <p class="home-kicker">Run-time supervision for async Rust firmware</p>
             <h1>The <em>graph</em> wires static and runtime coupling to fit any design.</h1>
             <p class="home-lede">
-              Async firmware grows past a handful of tasks and the hard
-              part stops being each <code>async fn</code> and starts being
-              the connections between them. <code class="home-lede-crate">embassy-supervisor</code> takes the
-              graph as data and resolves those connections two ways:
-              <code>deps:</code> order the static topology at compile time,
-              <code>dataflow:</code> wires readers and writers at runtime.
-              Combine them to fit the design.
+              <code class="home-lede-crate">embassy-supervisor</code> is
+              run-time supervision for complex embedded systems. Model the
+              firmware as a checked graph of tasks, resources, and control
+              points. The supervisor brings it up in order, keeps it
+              consistent through failures, and exposes every node to runtime
+              control. For industrial, automotive, and safety-critical
+              products where wiring tasks together is the hard part.
             </p>
             <div class="home-ctas">
               <a class="play" href={`${base}playground/`}>Try it live</a>
