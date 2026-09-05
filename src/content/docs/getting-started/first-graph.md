@@ -272,8 +272,8 @@ loop {
 
 A node without `beat_timeout:` is never policed. With it in place, the
 supervisor logs a warning the first time the sensor misses its budget.
-`SENSOR.is_stale(...)` then reports "running but wedged"; `is_running()`
-tells stopped and wedged apart. The application decides what to do. See
+`SENSOR.is_stale(...)` then reports "running but stalled"; `is_running()`
+tells stopped and stalled apart. The application decides what to do. See
 [Health monitoring](../concepts/health/).
 
 ## 7. Grow it: the dataflow

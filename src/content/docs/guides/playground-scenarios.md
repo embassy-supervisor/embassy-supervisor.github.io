@@ -90,7 +90,7 @@ and a timeout is a latched fault. `CONTACTORS` sits behind
 The escalation policy is the point. Stall the protection loop and the
 application withdraws its readiness (`clear_ready`), which opens the
 contactors through the `ready bound` edge (the safe state) instead of
-restarting a wedged loop with the pack live. Stall the SoC estimator instead
+restarting a stalled loop with the pack live. Stall the SoC estimator instead
 and the policy activates the `disabled` LIMP limiter, a second writer of the
 same limits signal.
 

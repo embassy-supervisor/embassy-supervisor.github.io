@@ -68,19 +68,22 @@ worker does with the value:
 | *(default)* | `&mut Type` | restored; respawn re-takes the same instance | long-lived singletons: an `Output`, a reborrowable peripheral |
 | `consume` | `Type` by value | nothing; slot stays **empty** | values the worker must drop at teardown (a driver whose `Drop` releases pins or DMA), or rebuilt fresh each run |
 | `shared` | `Type` by value, copied out (`T: Copy`) | nothing; slot **stays filled** | one handle fanned out to many consumers, for example a network stack handle; several nodes, and whole pools, declare the same slot name |
-| `local` | as the kind it composes with | as the kind it composes with | `!Send` values on a single core; needs the `local-resources` feature |
+| `local` | as the kind it composes with | as the kind it composes with | `!Send` values that never leave the one executor every declaration of the slot runs on; needs the `local-resources` feature |
 | `divisible` | a `Claimant`: the holder's own slot in the graph's budget | share **released** by the supervisor; a `Pause` park keeps it | one quantity split among N holders (a power or bandwidth cap); feature `budget` |
 
 `consume` makes teardown-drop explicit and the wake path honest: until the
 application re-provides, a respawn fail-closes with `ResourceMissing` instead
 of reusing a stale instance.
 
-`local` is the one form that injects unsafe code (an `unsafe impl Sync` on
-the slot type, with a single-core contract: all access to that slot happens
-on one core). That is why the feature is an explicit opt-in, and why `local`
-cannot combine with `executor:` (a cross-core spawn needs a `Send` future).
-`shared local` is the common composition: one fan-out slot of `!Send` handles
-on the core that built them.
+`local` is the only kind that requires unsafe code (`unsafe impl Sync`), so
+it is opt-in behind the `local-resources` feature. Every access to the slot
+value must happen on the same executor. The macro enforces this for every
+consumer `resources:` and provider `provides:` declaration, including the
+graph's `default executor`. Any executor qualifies, including a second core;
+mismatches are compile errors. The macro cannot check the app side, so any
+`provide()` from `main` must also run on that executor. The typical pattern
+is `shared local`: a single slot of `!Send` handles used on the executor
+that created them.
 
 ```rust
 supervisor_graph! {

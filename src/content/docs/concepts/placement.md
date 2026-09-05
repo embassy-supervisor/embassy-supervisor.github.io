@@ -9,7 +9,8 @@ description: Placing tasks on a preemptive interrupt tier or a second core, stra
 
 One embassy firmware can run several executors at different priorities. The
 `executor` mechanism makes the graph the single source of **where each task
-runs**: declare a slot, fill it at runtime, and annotate nodes with it.
+runs**: declare a slot, fill it at runtime, and annotate nodes with it, or
+make one slot the graph's `default executor` and annotate only the exceptions.
 
 ```mermaid
 flowchart TD
@@ -46,7 +47,17 @@ HIGH.set(EXECUTOR_HIGH.start(interrupt::SWI_IRQ_0));
 `SAMPLER` now preempts the cooperative tier, so a quick sensor read never
 waits behind a long request handler, while staying below raw hardware
 interrupts. `LOGGER` stays on the thread executor, and the dependency between
-them is still honored. The routed task's future must be `Send`.
+them is still honored.
+
+Routing uses embassy's `SendSpawner`. The `Send` bound applies to spawn
+arguments, not the future, which is built on the target executor at first
+poll. `task:` shell arguments are always `Send`, so any `task:` worker
+routes regardless of its future. `spawn:` functions must meet the bound on
+their own arguments.
+
+Resources the worker touches on that tier must stay tier-local. `local`
+slots are verified: every consumer and provider resolves to one executor.
+Values reached through accessors are not verified; see the hazards below.
 
 ## The second core
 
@@ -78,6 +89,77 @@ one-line `trace::set_core_id_fn` to keep nested accounting exact per core.
 Explicit non-goals: task migration and work stealing. Most HAL futures are
 not `Send` across cores, so each node lives where the graph puts it. If you
 want work on core 1, declare a node (or a pool) with `executor: CORE1`.
+
+## The supervisor on the interrupt tier
+
+The supervisor does not assume thread mode. It uses critical-section
+primitives and takes its spawner as an argument. You can run the supervisor
+itself on an `InterruptExecutor` while most of the graph stays in thread
+mode via a default executor:
+
+```rust
+supervisor_graph! {
+    default executor THREAD;                 // thread mode, published from main
+    executor HIGH;
+    node WATCHDOG  = Terminate, task: watchdog_worker;                 // inherits THREAD
+    node HEARTBEAT = Pause, executor: HIGH, task: heartbeat_worker;   // says otherwise
+}
+```
+
+```rust
+static EXECUTOR_SUP: InterruptExecutor = InterruptExecutor::new();
+
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
+    THREAD.set(spawner.make_send());                  // the default tier is this executor
+    interrupt::SWI_IRQ_1.set_priority(Priority::P1);  // above HIGH's P2
+    EXECUTOR_SUP
+        .start(interrupt::SWI_IRQ_1)
+        .spawn(app_supervisor().unwrap());
+}
+
+#[embassy_executor::task]
+async fn app_supervisor() {
+    // Embassy documents this only for the Spawner of an InterruptExecutor.
+    let spawner = unsafe { Spawner::for_current_executor() }.await;
+    let sup = Supervisor::new(&GRAPH);
+    loop {
+        let fault = sup.run(&spawner).await;   // returns on ShutdownTimeout
+        error!("supervisor: {}", fault);       // report; run() re-enters idempotently
+    }
+}
+```
+
+`default executor` names the slot inherited by every node and pool that
+could have written `executor: NAME`. `task:` workers and `spawn:` functions
+use it unless their node specifies another executor. Parked nodes and raw
+`spawn:` closures use the supervisor's own spawner. One default executor per
+graph, at the composition site, never `#[cfg]`-gated.
+
+This inversion improves supervisor responsiveness: fault detection, acks and
+teardown no longer queue behind a long thread-mode handler, and a wedged or
+hogged thread executor is reported instead of taking the reporter down. The
+[reference firmware](/guides/demo-firmware/) uses this layout. Five things
+change, none caught by the compiler:
+
+- **State shared across tiers needs a lock sound under preemption.** `local`
+  slots are checked per slot; values reached through accessors are not.
+  `embassy_net::Stack` contains a bare `RefCell`, so every task that touches
+  one stack must stay on one tier.
+- **`spawn:` arguments and glue preludes run at the supervisor's priority.**
+  `task:` arguments are evaluated on the target tier; `spawn:` arguments and
+  `state:` heap boxes run on the supervisor's executor.
+- **The supervisor's own work runs elevated**: sweeps, ack-timeout waits,
+  teardown waves and pool scaling. That is the point, or the cost.
+- **Keep a hardware watchdog feeder on the tier it watches.** A feeder above
+  thread mode keeps running through a hogged thread executor and masks the
+  hang the watchdog should catch.
+- **A second core cannot wake an interrupt executor on its own.** Embassy
+  pends an `InterruptExecutor` IRQ in the local NVIC, and each core has its
+  own. A wake from the other core is lost, and run-queue coalescing can turn
+  that into a permanent supervisor stall. Thread executors are immune
+  because `sev` reaches both cores. If the graph spans cores, relay the pend
+  through a shared SWI handler or doorbell.
 
 ## `task:` extras evaluate on the target tier
 

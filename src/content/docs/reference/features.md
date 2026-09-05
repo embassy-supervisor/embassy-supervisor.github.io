@@ -20,7 +20,8 @@ feature, never a silent behavior change.
 | `macros` | ✓ | the `supervisor_graph!` declaration macro |
 | `control` | | runtime control plane: `ControlOp`, `request_control`, `try_request_control`, `apply_control`; `Deactivate` holds dependents under the `collateral` flag until `Activate` releases them |
 | `pool` | | elastic pools: `ElasticPool`, `run_pools`, `GRAPH.pools` |
-| `local-resources` | | the `local` resource kind. ⚠ opts into the macro emitting a documented `unsafe impl Sync` (single-core contract) |
+| `local-resources` | | the `local` resource kind. ⚠ opts into the macro emitting a documented `unsafe impl Sync` (one-executor contract, checked per slot) |
+| `fault-inject` | | `TaskNode::inject(Fault::{Stall, Wedge, Crash, Hog(..)})`, `clear_fault()`, `fault()`: faults done to a task, not asked of its worker. A bench, test and demo feature |
 | `budget` | | the `divisible` resource kind: a graph-sized `Budget<K>`, a `Claimant` per holder, allocator-side `rebalance` under a `BudgetPolicy` (`FairShare`, `ShrinkFastGrowSlow`), and a stopped holder's share released by the supervisor (missed ack included; a `Pause` park keeps it) |
 | `readiness` | | `set_ready` / `wait_ready` / `clear_ready` and the `ready` dep marker |
 | `liveness` | | per-node heartbeat: `beat()`, `ticks_since_beat()`, `is_stale()` |

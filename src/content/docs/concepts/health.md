@@ -17,7 +17,7 @@ With the `liveness` feature, a task's node carries a heartbeat flag.
 - `node.beat()` raises it. A fresh spawn counts as a beat, so a node is never
   instantly stale.
 - `ticks_since_beat()` converts the flag using a clock read the caller makes
-  anyway; `is_stale(max_age)` answers "running but wedged".
+  anyway; `is_stale(max_age)` answers "running but stalled".
 - The write-side verbs `beat_put` / `beat_writer` (feature `dataflow`) fold
   the beat into the access itself (they live in the `dataflow` verb set and
   additionally need `liveness`), and an `observed beat` entry can drive the
@@ -102,7 +102,7 @@ every feature combination:
 ```rust
 for (i, node) in GRAPH.iter_nodes() {
     let down = !node.is_running();
-    let wedged = node.is_stale(embassy_time::Duration::from_secs(1));
+    let stalled = node.is_stale(embassy_time::Duration::from_secs(1));
     let unready = !node.is_ready();
     // GRAPH.deps_of(i) / GRAPH.dependents_of(i, ..) for topology context
 }

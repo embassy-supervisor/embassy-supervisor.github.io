@@ -114,6 +114,27 @@ test swaps the hardware edges for simulated ones and runs scenarios in
 virtual time. Real firmware teams use this to fly whole missions in under a
 second of wall time, lockstep, on every commit.
 
+## Fault injection
+
+Enable the `fault-inject` feature to make nodes fail without changing worker code:
+
+```rust
+STALLER.inject(Fault::Stall)?;                          // shell stops polling the worker
+WEDGER.inject(Fault::Wedge)?;                           // node hides the stop and swallows the ack
+CRASHER.inject(Fault::Crash)?;                          // worker future is dropped
+HOGGER.inject(Fault::Hog(Duration::from_millis(400)))?; // executor busy-spins
+STALLER.clear_fault();                                  // replay withheld events and wake
+```
+
+Expected effects:
+
+- **Stall**: monitor reports `Stale`, then `Recovered` after clear; stops still ack.
+- **Wedge**: `stop_node` returns `ShutdownTimeout` while the node stays running, then a late ack after clear. A worker that acks or exits while wedged drops its provided value in its own executor context.
+- **Crash**: `has_exited()` becomes true, lent resources are restored, the `exit:` slot is empty, and `restart` respawns the worker.
+- **Hog**: shows as one jump in mock time between two consecutive yields of the test task.
+
+Stall, crash, and hog require the `task:` shell. Hand-written `spawn:` tasks return `InjectError::NoShell`. See the crate's `fault_inject` test for a full example.
+
 ## Next
 
 [Diagram and lint tools](/guides/tools/) for keeping

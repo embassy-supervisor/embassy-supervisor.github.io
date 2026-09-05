@@ -34,6 +34,18 @@ shell; take-kind resources become per-member slot arrays.</dd>
 The two uses: an interrupt-priority tier on the same core, or a second
 core's own executor.</dd>
 
+<dt>default executor</dt>
+<dd>The executor every node and pool inherits unless it specifies its own.
+Lets a supervisor run on an interrupt tier while the rest of the graph
+stays on thread mode.</dd>
+
+<dt>stall / wedge / hog</dt>
+<dd>Three failure modes of a still-alive task. A <em>stall</em> waits
+forever on an await and is caught by liveness. A <em>wedge</em> runs but
+never acknowledges a stop. A <em>hog</em> never yields from one poll and
+freezes its executor. The <code>fault-inject</code> feature can trigger
+each one for testing.</dd>
+
 <dt>resource / slot</dt>
 <dd>A value one party builds and one worker owns while it runs, handed over
 through a <code>ResourceSlot</code> at spawn. Kinds: lend (default),

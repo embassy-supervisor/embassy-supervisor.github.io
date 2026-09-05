@@ -24,6 +24,7 @@ Everything else is an optional clause on those lines. The full shape:
 supervisor_graph! {
     name: IDENT;                        // rename the emitted GRAPH static
     executor NAME;                      // a runtime-filled spawner slot
+    default executor NAME;              // ..inherited by every task:/spawn:-fn item
 
     node NAME = Mode,                   // Terminate | Pause | OnDemand
         deps: [A, POOL, NET ready]      // start order; `ready` also waits
@@ -145,10 +146,17 @@ supervisor_graph! {
 }
 ```
 
-`executor NAME;` emits a slot static. The application fills it with a
-`SendSpawner`, from an `InterruptExecutor` on the same core or from a second
-core's executor, and annotated nodes spawn through it. Bring-up awaits the
-slot, so a late-booting core is a rendezvous rather than a race. Details in
+`executor NAME;` declares a spawner slot. Fill it at runtime with a `SendSpawner`
+from an `InterruptExecutor` or another core's executor. Nodes marked with
+`executor: NAME` spawn through it. Bring-up waits for the slot, so a late-booting
+core becomes a rendezvous instead of a race.
+
+`default executor NAME;` sets that slot as the default executor for every node
+and pool that could have used `executor: NAME` themselves. `task:` workers and
+`spawn:` functions inherit it; parked nodes and verbatim `spawn:` closures stay
+on the supervisor's executor. An explicit `executor:` always overrides the
+default. Only one default executor is allowed per graph, at the compose site, and
+it cannot be `#[cfg]`-gated. Details in
 [Executors and cores](/concepts/placement/).
 
 ## Pools

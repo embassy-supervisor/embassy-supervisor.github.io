@@ -46,8 +46,8 @@ Why it holds together:
 - The provider's worker builds once, `provide()`s into the four slots, then
   parks on `wait_shutdown()`. `provides:` ties the slots to its lifetime.
 - The two runners are `local consume`: they are `!Send`, they live on the
-  core that built them, and they are dropped at teardown so the pins and DMA
-  come back.
+  executor that built them, and they are dropped at teardown so the pins and
+  DMA come back.
 - `STACK` is `shared`: one `Copy` handle fanned out to every network user.
   A missing stack is a `ResourceMissing` fault, not a panicking accessor.
 - `slot_timeout: 5000` on the consumers covers the radio's bring-up time;
