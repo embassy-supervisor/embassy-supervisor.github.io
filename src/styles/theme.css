@@ -894,6 +894,150 @@ figure.graph .cluster rect {
   color: var(--sup-cyan);
 }
 
+/* Release log filled by src/scripts/releases.ts. Entries scroll upward with
+   soft top and bottom fades; reserved height prevents layout shift. */
+.home-releases {
+  max-width: 34rem;
+  margin: 2.4rem 0 0;
+  font-family: var(--sl-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  color: var(--sup-label);
+}
+
+.home-releases .rel-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 1.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.home-releases .rel-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--sup-label);
+  transition: color 160ms ease;
+}
+
+.home-releases .rel-label:hover {
+  color: var(--sup-cyan);
+}
+
+/* Fade the scrolling list at top and bottom. */
+.home-releases .rel-mask {
+  height: 10.5rem;
+  overflow: hidden;
+  will-change: transform;
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    transparent,
+    #000 1.5rem,
+    #000 calc(100% - 2.5rem),
+    transparent
+  );
+  mask-image: linear-gradient(
+    180deg,
+    transparent,
+    #000 1.5rem,
+    #000 calc(100% - 2.5rem),
+    transparent
+  );
+}
+
+/* Smooth infinite scroll; pause on hover or focus. */
+.home-releases .rel-track {
+  animation: rel-scroll var(--rel-dur, 200s) linear infinite;
+}
+
+.home-releases .rel-mask:hover .rel-track,
+.home-releases .rel-mask:focus-within .rel-track {
+  animation-play-state: paused;
+}
+
+.home-releases .rel-static .rel-track {
+  animation: none;
+}
+
+@keyframes rel-scroll {
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-releases .rel-track {
+    animation-play-state: paused;
+  }
+}
+
+.home-releases .rel-run {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home-releases .rel-run a {
+  display: block;
+  padding: 0.55rem 0;
+  text-decoration: none;
+  color: var(--sup-label);
+  transition: color 160ms ease;
+}
+
+.home-releases .rel-run a:hover,
+.home-releases .rel-run a:focus-visible {
+  color: var(--sup-cyan);
+  outline: none;
+}
+
+.home-releases .rel-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  white-space: nowrap;
+}
+
+.home-releases .rel-ver {
+  color: var(--sup-heading);
+  font-weight: 500;
+}
+
+.home-releases .rel-run a:hover .rel-ver,
+.home-releases .rel-run a:focus-visible .rel-ver {
+  color: inherit;
+}
+
+.home-releases .rel-date {
+  margin-left: auto;
+  opacity: 0.7;
+}
+
+/* The opening line of the notes, two lines at most. */
+.home-releases .rel-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 0.2rem;
+  font-family: var(--sl-font);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  letter-spacing: 0;
+  color: var(--sup-muted);
+}
+
+.home-releases .rel-note code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.92em;
+  color: var(--sup-code-text);
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
 .home-hero {
   max-width: 72rem;
   margin: 0 auto;

@@ -194,6 +194,15 @@ const highlightedB = highlight(rustSourceB);
                 >GitHub</a
               >
             </div>
+
+        <aside class="home-releases" aria-label="Latest releases" data-releases>
+          <div class="rel-head">
+            <a class="rel-label" href={`${REPO}/releases`}
+              >Releases <span aria-hidden="true">→</span></a
+            >
+          </div>
+          <div class="rel-mask"><div class="rel-track"></div></div>
+        </aside>
           </div>
 
           <div class="home-hero-graph">
@@ -448,6 +457,10 @@ flowchart TD
     </div>
   </body>
 </html>
+
+<script>
+  import '../scripts/releases';
+</script>
 
 <script>
   // Deliberately not the same text as the Head.astro bootstrap: Astro

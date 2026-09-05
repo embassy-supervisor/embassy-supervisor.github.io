@@ -4,23 +4,23 @@ description: Everything this site stores in your browser, why it is stored, how 
 tableOfContents: false
 ---
 
-This site is the documentation for `embassy-supervisor`, an open source Rust
-crate. It has no accounts, no advertising, no embedded third-party content and
-nothing to sell you. The only reason it stores anything is to count how many
-people read which pages, and to remember whether you agreed to that.
+This site documents `embassy-supervisor`, an open source Rust crate. It has no
+accounts, advertising, or third-party content. It stores only two things: your
+analytics consent choice, and a cached copy of the front page release list from
+GitHub.
 
 ## What gets stored
 
 | Name | Kind | What it is for | How long |
 | --- | --- | --- | --- |
-| `cc_cookie` | Cookie | Remembers the choice you made about analytics, so you are not asked again on every page. | 182 days |
-| `_ga`, `_ga_1SHQP5YBQ3` | Cookie | Google Analytics. Tells one visitor apart from another and one visit from the next, so page counts are not just a tally of requests. | About 2 years (Google's default) |
-| `cc_loc` | Session storage | The two-letter country the consent check resolved, so the lookup is not repeated on every page you open. | Cleared when you close the tab |
+| `cc_cookie` | Cookie | Remembers your analytics choice so you are not asked again. | 182 days |
+| `_ga`, `_ga_1SHQP5YBQ3` | Cookie | Google Analytics visitor and session identifiers. | About 2 years (Google's default) |
+| `cc_loc` | Session storage | Country code from the consent region check. | Cleared when the tab closes |
+| `sup-releases` | Local storage | Cached release list from GitHub for the front page ticker. | Replaced on next refresh, after 30 minutes at the earliest |
 
-`cc_cookie` and `cc_loc` are set no matter what you choose: without them the
-site could not remember your answer, and would have to ask again on every page.
-The `_ga` cookies are set **only** if you accept analytics, and are deleted if
-you later turn analytics off.
+`cc_cookie` and `cc_loc` are always set; without them the site could not
+remember your choice. The `_ga` cookies are set **only** if you accept
+analytics, and are deleted if you turn analytics off.
 
 ## Being asked, or not
 
@@ -59,6 +59,13 @@ advertising tags, and nothing here is used for profiling or sold to anyone.
 Google's own description of what it does with the data is in the
 [Google Privacy Policy](https://policies.google.com/privacy) and in
 [how Google uses data from sites that use its services](https://policies.google.com/technologies/partner-sites).
+
+## What GitHub receives
+
+The front page fetches the latest release list from GitHub's API. Like any
+request to GitHub, this reveals your IP address. It sets no cookies, needs no
+consent, and the result is cached for half an hour. If GitHub does not answer,
+no list is shown.
 
 ## The banner itself
 
