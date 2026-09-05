@@ -6,7 +6,7 @@
 //! `drain_events()` returns one snapshot object per frame.
 
 use embassy_executor::{Executor, Spawner};
-use embassy_supervisor::{ControlOp, try_request_control};
+use embassy_supervisor::{ControlOp, Fault, InjectError, try_request_control};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, MockDriver};
@@ -14,7 +14,7 @@ use std::sync::atomic::Ordering;
 use wasm_bindgen::prelude::*;
 
 use crate::behavior::Behavior;
-use crate::registry::{Gate, fault};
+use crate::registry::Gate;
 use crate::{build, events, parse, registry};
 
 fn js_err(e: impl std::fmt::Display) -> JsValue {
@@ -126,9 +126,11 @@ async fn power_task(idx: usize, spawner: Spawner) {
 
 #[embassy_executor::task]
 async fn supervise(spawner: Spawner) {
-    let fault = build::drive_supervisor(&spawner).await;
-    events::push_fault(&fault);
-    log::error!("supervisor faulted: {fault}");
+    loop {
+        let fault = build::drive_supervisor(&spawner).await;
+        events::push_fault(&fault);
+        log::error!("supervisor faulted: {fault}");
+    }
 }
 
 /// Parse + build + start. Returns the `ParseOutcome` JSON either way; the
@@ -282,28 +284,35 @@ pub fn set_input(node: &str, value: f64) -> Result<(), JsValue> {
         .ok_or_else(|| js_err(format!("unknown node `{node}`")))
 }
 
-/// Inject a fault: `wedge` (won't ack shutdown), `stall` (stops beating),
-/// `exit` (worker returns abruptly), `clear`.
+/// Inject a fault through the crate's `fault-inject`.
 #[wasm_bindgen]
 pub fn inject(node_idx: u8, kind: &str) -> Result<(), JsValue> {
     let rt = registry::nodes()
         .get(node_idx as usize)
         .ok_or_else(|| js_err("no node at that index"))?;
-    let f = match kind {
-        "wedge" => fault::WEDGE,
-        "stall" => fault::STALL,
-        "exit" => fault::EXIT,
-        "clear" => fault::NONE,
+    let fault = match kind {
+        "stall" => Fault::Stall,
+        "wedge" => Fault::Wedge,
+        "crash" => Fault::Crash,
+        "clear" => Fault::None,
+        "hog" => {
+            return Err(js_err(
+                "hog is not available in the playground: every executor polls on the browser's one thread against a virtual clock, so a spin would never end",
+            ));
+        }
         other => return Err(js_err(format!("unknown fault: {other}"))),
     };
-    rt.fault.store(f, Ordering::Relaxed);
-    if f == fault::WEDGE {
-        rt.wedge_wake.signal(());
-    }
-    Ok(())
+    rt.node.inject(fault).map_err(|e| {
+        js_err(match e {
+            InjectError::NoShell => format!(
+                "{}: no shell; a node without a `task:` only takes wedge",
+                rt.node.name()
+            ),
+            _ => format!("{}: {e:?}", rt.node.name()),
+        })
+    })
 }
 
-/// Drain or reopen a `Leased` signal (by snapshot signal index).
 #[wasm_bindgen]
 pub fn signal_command(signal_idx: usize, cmd: &str) -> Result<(), JsValue> {
     let cmd = match cmd {

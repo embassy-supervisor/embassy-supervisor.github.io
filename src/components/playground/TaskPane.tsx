@@ -180,6 +180,7 @@ export default function TaskPane({ snapshot, stale, cores }: Props) {
                 n.bound_stopped && 'bound',
                 n.detached && 'detached',
                 n.exited && 'exited',
+                n.fault && `⚡${n.fault}`,
               ].filter(Boolean) as string[];
               return (
                 <tr key={n.name} className={`pg-task-${cls}`}>
@@ -188,7 +189,9 @@ export default function TaskPane({ snapshot, stale, cores }: Props) {
                     {n.name}
                     <span className={`chip chip-${n.mode}`}>{n.mode}</span>
                   </td>
-                  <td>{n.executor ?? 'root'}</td>
+                  <td title={n.executor_defaulted ? 'inherited from `default executor`' : undefined}>
+                    {n.executor ?? 'root'}
+                  </td>
                   <td>{cores[n.executor ?? 'root'] ?? 0}</td>
                   <td className="pg-task-status">{n.running ? (n.status ?? '') : ''}</td>
                   <td>{n.running && n.busy ? '●' : ''}</td>

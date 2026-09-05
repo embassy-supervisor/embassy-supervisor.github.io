@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration as StdDuration;
 
 use embassy_executor::{Executor, Spawner};
-use embassy_supervisor::{ControlOp, try_request_control};
+use embassy_supervisor::{ControlOp, Fault, try_request_control};
 use embassy_supervisor_playground::{build, parse, registry};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -228,9 +228,7 @@ fn frame_pool_and_encoder_lifecycle() {
 
     // Lose PTP: the servo holds last-good and the streams stay smooth — the
     // slow failure a heartbeat cannot catch.
-    by_name("PTP_TS")
-        .fault
-        .store(registry::fault::STALL, Ordering::Relaxed);
+    by_name("PTP_TS").node.inject(Fault::Stall).unwrap();
     advance_ms(1000);
     let av = writes_of("signals::AV");
     advance_ms(1500);

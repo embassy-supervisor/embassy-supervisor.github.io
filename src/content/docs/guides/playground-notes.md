@@ -22,7 +22,9 @@ semantics as on hardware:
 - Task modes: `Terminate`, `Pause`, `OnDemand`.
 - Dependency ordering: `deps:`, including `ready` and `ready bound`
   markers.
-- Named executors: `executor` clauses get real wasm executor instances.
+- Named executors: `executor` clauses create real wasm executors; the
+  default executor is inherited. Cards with inherited executors show a
+  dashed chip.
 - Pools: member modes, `min:`/`max:` sizes, and `DeferredShrink`
   cooldowns.
 - Resources: `resources:` gating, `provides:`, and the `consume` and
@@ -55,6 +57,9 @@ semantics as on hardware:
 - Trace recorders: genuine poll and pass counts, plus the current task
   per executor.
 - Composition: `supervisor_fragment!` and `compose_graph!`.
+- Fault injection: the ⚡ menu calls real fault verbs. Stall skips polls,
+  crash drops the worker, and wedge swallows the stop ack. Hog is not
+  offered because wasm's single thread would freeze alongside it.
 
 ## What a task is in the playground
 
@@ -135,7 +140,9 @@ and durations on hardware.
 - A `deps: [X ready]` edge waits at the gate for the default 100 ms
   `slot_timeout`: give consumers of slow providers an explicit
   `slot_timeout:`, or the supervisor will (correctly) fault the bring-up.
-- The wedge fault is honest: the node stops acking shutdown, so the next
-  stop or restart surfaces a real `ShutdownTimeout` fault.
+- Wedge swallows the shutdown ack, so the next stop or restart surfaces a
+  real `ShutdownTimeout`. `clear fault` delivers the swallowed ack and
+  lets a restart succeed. Stall survives a stop, so restart without clear
+  leaves the node stalled, shown by the `⚡stall` chip.
 - Every line in the logs pane is the supervisor's own `log` backend,
   timestamped in virtual seconds.

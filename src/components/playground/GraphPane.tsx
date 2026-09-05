@@ -144,7 +144,41 @@ function ledTitle(cls: string): string {
   }[cls] as string;
 }
 
-type SupData = { name: string; mode: string; executor: string | null };
+type SupData = {
+  name: string;
+  mode: string;
+  executor: string | null;
+  /** Inherited from `default executor` rather than written on the node. */
+  executorDefaulted: boolean;
+  /** Has a `task:`, so it runs inside the crate's shell (stall, crash). */
+  task: boolean;
+};
+
+/**
+ * The ⚡ menu: the crate's `fault-inject` verbs, done to the task by its
+ * shell and node. Stall and crash need the `task:` shell; a parked node
+ * takes wedge and clear only. Hog is not offered: on wasm every executor
+ * polls on one thread against the virtual clock, so a spin would never end.
+ */
+function FaultMenu({ idx, shelled, title }: { idx: number; shelled: boolean; title: string }) {
+  const live = useContext(LiveContext);
+  return (
+    <select
+      className="pg-fault-menu"
+      value=""
+      onChange={(e) => {
+        if (e.target.value) live.onInject(idx, e.target.value);
+      }}
+      title={title}
+    >
+      <option value="">⚡</option>
+      {shelled && <option value="stall">stall (stop polling)</option>}
+      <option value="wedge">wedge (no shutdown ack)</option>
+      {shelled && <option value="crash">crash (abrupt exit)</option>}
+      <option value="clear">clear fault</option>
+    </select>
+  );
+}
 
 function SupNode({ data }: NodeProps<Node<SupData>>) {
   const live = useContext(LiveContext);
@@ -168,7 +202,14 @@ function SupNode({ data }: NodeProps<Node<SupData>>) {
             <DeclName key={leaveTick} name={data.name} />
           </div>
           <div className="pg-node-meta">
-            {data.executor && <span className="pg-exec" title="named executor">{data.executor}</span>}
+            {data.executor && (
+              <span
+                className={`pg-exec${data.executorDefaulted ? ' pg-exec-default' : ''}`}
+                title={data.executorDefaulted ? 'inherited from `default executor`' : 'named executor'}
+              >
+                {data.executor}
+              </span>
+            )}
             {/* A stopped node's last status ("session open") reads as live;
                 show it only while the task actually runs. */}
             <span className="pg-node-status">{snap?.running ? (snap.status ?? '') : 'not running'}</span>
@@ -187,6 +228,11 @@ function SupNode({ data }: NodeProps<Node<SupData>>) {
               detached
             </span>
           )}
+          {snap?.fault && (
+            <span className="chip chip-fault" title={`injected fault: ${snap.fault}; clear it from the ⚡ menu`}>
+              ⚡{snap.fault}
+            </span>
+          )}
         </span>
       </div>
       {running && (
@@ -200,20 +246,7 @@ function SupNode({ data }: NodeProps<Node<SupData>>) {
           <button onClick={() => live.onControl(snap!.idx, 'restart')} title="restart (rest-for-one cascade)">
             ↻
           </button>
-          <select
-            className="pg-fault-menu"
-            value=""
-            onChange={(e) => {
-              if (e.target.value) live.onInject(snap!.idx, e.target.value);
-            }}
-            title="inject a fault"
-          >
-            <option value="">⚡</option>
-            <option value="stall">stall heartbeat</option>
-            <option value="wedge">wedge (no shutdown ack)</option>
-            <option value="exit">crash (abrupt exit)</option>
-            <option value="clear">clear fault</option>
-          </select>
+          <FaultMenu idx={snap!.idx} shelled={data.task} title="inject a fault" />
         </div>
       )}
       <Handle type="source" position={Position.Right} />
@@ -285,20 +318,7 @@ function PoolNode({ data }: NodeProps<Node<PoolData>>) {
           >
             {member.running ? '⏻ stop' : '⏻ start'}
           </button>
-          <select
-            className="pg-fault-menu"
-            value=""
-            onChange={(e) => {
-              if (e.target.value) live.onInject(member.idx, e.target.value);
-            }}
-            title="inject a fault into this member"
-          >
-            <option value="">⚡</option>
-            <option value="stall">stall heartbeat</option>
-            <option value="wedge">wedge (no shutdown ack)</option>
-            <option value="exit">crash (abrupt exit)</option>
-            <option value="clear">clear fault</option>
-          </select>
+          <FaultMenu idx={member.idx} shelled title="inject a fault into this member" />
         </div>
       )}
       <div
@@ -604,7 +624,13 @@ function buildNodes(model: GraphModel, layout: Layout): Node[] {
         type: 'sup',
         position,
         ...parent,
-        data: { name: m.name, mode: m.mode, executor: m.executor } satisfies SupData,
+        data: {
+          name: m.name,
+          mode: m.mode,
+          executor: m.executor,
+          executorDefaulted: m.executor_defaulted,
+          task: m.task !== null,
+        } satisfies SupData,
       };
     }
     if (c.kind === 'pool') {

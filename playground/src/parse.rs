@@ -251,6 +251,7 @@ fn resource_models(
             }
             ResourceModel {
                 name: r.name.clone(),
+                local: r.local,
                 consume: r.consume,
                 shared: r.shared,
                 divisible: r.divisible,
@@ -261,14 +262,6 @@ fn resource_models(
 }
 
 fn node_common_badges(n: &tm::NodeModel, item: &str, badges: &mut Vec<Badge>) {
-    if n.executor.is_some() && n.resources.iter().any(|r| r.shared && r.local) {
-        badge(
-            badges,
-            item,
-            "resources:",
-            "`shared local` with `executor:` is rejected by the real macro: a local resource cannot cross executor tiers",
-        );
-    }
     if !n.cfg.is_empty() {
         badge(badges, item, "#[cfg]", "cfg-gated node: treated as enabled");
     }
@@ -347,7 +340,7 @@ fn build_model(
                     errors.push(ParseError {
                         line: g.line,
                         msg: format!(
-                            "{}: the playground supports at most 3 named executors",
+                            "{}: the playground supports at most 3 named executors (a `default executor` counts as one)",
                             e.name
                         ),
                     });
@@ -412,6 +405,7 @@ fn build_model(
                         true
                     }),
                     executor: n.executor.clone(),
+                    executor_defaulted: n.executor_defaulted,
                     slot_timeout_ms: n.slot_timeout_ms.as_ref().and_then(|l| {
                         cfg_badge(badges, &name, "slot_timeout:", &l.cfg);
                         lit_u64(l, &name, "slot_timeout:", errors)
@@ -453,6 +447,7 @@ fn build_model(
     }
 
     check_resource_kinds(&nodes, g.line, errors);
+    check_local_tiers(&nodes, badges);
     let signals = collect_signals(&nodes, g.line, errors)?;
     let order = kahn_order(&nodes, &pools, g.line, errors)?;
 
@@ -585,6 +580,7 @@ fn build_pool(
             provides: Vec::new(),
             disabled: false,
             executor: p.executor.clone(),
+            executor_defaulted: p.executor_defaulted,
             slot_timeout_ms,
             ack_timeout_ms,
             beat_timeout_ms: None,
@@ -603,6 +599,49 @@ fn build_pool(
         max,
         cooldown_ms,
     });
+}
+
+/// In the real macro, `local` slots must stay on one executor. The
+/// playground runs everything on one thread, so it badges the mismatch
+/// instead of rejecting the graph.
+fn check_local_tiers(nodes: &[NodeModel], badges: &mut Vec<Badge>) {
+    // slot name -> (declarer, executor) in declaration order
+    let mut slots: BTreeMap<&str, Vec<(&str, Option<&str>)>> = BTreeMap::new();
+    for n in nodes {
+        for r in &n.resources {
+            if r.local {
+                slots
+                    .entry(&r.name)
+                    .or_default()
+                    .push((&n.name, n.executor.as_deref()));
+            }
+        }
+    }
+    for n in nodes {
+        for name in &n.provides {
+            if let Some(decls) = slots.get_mut(name.as_str()) {
+                decls.push((&n.name, n.executor.as_deref()));
+            }
+        }
+    }
+    let tier = |ex: Option<&str>| match ex {
+        Some(e) => format!("`{e}`"),
+        None => "the supervisor's executor".to_string(),
+    };
+    for (slot, decls) in slots {
+        let (first, first_ex) = decls[0];
+        let Some(&(other, other_ex)) = decls.iter().find(|(_, ex)| *ex != first_ex) else {
+            continue;
+        };
+        let note = format!(
+            "`{slot}` is `local`: every declaration must run on one executor, but `{first}` runs on {} and `{other}` on {}; the real macro rejects this",
+            tier(first_ex),
+            tier(other_ex)
+        );
+        for (declarer, _) in &decls {
+            badge(badges, declarer, "resources:", &note);
+        }
+    }
 }
 
 /// The real macro unifies a `divisible` name across its holders like a

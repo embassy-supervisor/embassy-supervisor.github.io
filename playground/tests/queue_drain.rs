@@ -10,6 +10,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration as StdDuration;
 
 use embassy_executor::{Executor, Spawner};
+use embassy_supervisor::Fault;
 use embassy_supervisor_playground::{build, health, parse, registry};
 use embassy_time::{Duration, MockDriver};
 
@@ -200,9 +201,7 @@ fn drain_scales_with_consumers_and_hold_follows_cadence() {
 
     // Kill the producer: the loop holds last-good once the gap exceeds twice
     // the cadence it learned, well under a second at these rates.
-    by_name("SLOW")
-        .fault
-        .store(registry::fault::EXIT, Ordering::Relaxed);
+    by_name("SLOW").node.inject(Fault::Crash).unwrap();
     assert!(settle(|| by_name("SLOW").node.has_exited(), 3000));
     assert!(
         settle(|| ctl.status() == Some("holding last-good"), 3000),

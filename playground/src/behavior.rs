@@ -6,13 +6,13 @@
 use std::future::Future;
 use std::sync::atomic::Ordering;
 
-use embassy_futures::select::{Either, select};
-use embassy_supervisor::{Backed, Coupling, Leased, Mode, ShrinkFastGrowSlow, Sig};
+use embassy_futures::select::select;
+use embassy_supervisor::{Backed, Coupling, Injected, Leased, Mode, ShrinkFastGrowSlow, Sig};
 use embassy_time::{Duration, Instant, Timer};
 use serde::Deserialize;
 use std::sync::atomic::AtomicU32;
 
-use crate::registry::{self, Gate, HELD_BY_NONE, NodeRt, ResourceRt, SignalRt, fault};
+use crate::registry::{self, Gate, HELD_BY_NONE, NodeRt, ResourceRt, SignalRt};
 
 fn default_true() -> bool {
     true
@@ -210,10 +210,6 @@ pub enum Behavior {
     Idle,
 }
 
-fn fault_of(rt: &NodeRt) -> u8 {
-    rt.fault.load(Ordering::Relaxed)
-}
-
 fn input_f32(rt: &NodeRt) -> f32 {
     f32::from_bits(rt.input.load(Ordering::Relaxed))
 }
@@ -273,38 +269,6 @@ fn assert_ready(rt: &'static NodeRt) {
     }
 }
 
-fn stalled(rt: &NodeRt) -> bool {
-    fault_of(rt) == fault::STALL
-}
-
-fn beat_unless_stalled(rt: &'static NodeRt) {
-    if !stalled(rt) {
-        rt.node.beat();
-    }
-}
-
-/// True when the body should end early (injected abrupt exit).
-fn exit_requested(rt: &'static NodeRt) -> bool {
-    if fault_of(rt) == fault::EXIT {
-        log::error!("{}: worker crashed (injected)", rt.node.name());
-        return true;
-    }
-    false
-}
-
-/// Wait for an injected wedge fault. Event-driven, never a timer poll: a
-/// 50 ms flag poll here would wake every task — a parked Pause task included
-/// — and the task panel would show phantom polls on tasks that are asleep.
-async fn wait_wedge(rt: &'static NodeRt) {
-    loop {
-        if fault_of(rt) == fault::WEDGE {
-            log::warn!("{}: wedged — will not ack shutdown", rt.node.name());
-            return;
-        }
-        rt.wedge_wake.wait().await;
-    }
-}
-
 /// Count active consumers of `sig`. Queue drain rate scales with this.
 /// Session members count only while open; an unread signal counts as one sink.
 fn running_readers(sig: &'static SignalRt) -> u32 {
@@ -344,14 +308,13 @@ fn session_wanted(rt: &'static NodeRt, clients: u32) -> bool {
 
 /// Whether an open session should close now: fewer clients than open
 /// sessions, and this is the highest-numbered live one, so a dial step down
-/// ends exactly one session and never migrates another. A stalled member
-/// cannot act, so it does not hold the others open.
+/// ends exactly one session and never migrates another.
 fn session_surplus(rt: &'static NodeRt, clients: u32) -> bool {
     let mut open = 0;
     for m in pool_members(rt) {
         if m.session_open.load(Ordering::Relaxed) {
             open += 1;
-            if m.idx > rt.idx && !stalled(m) {
+            if m.idx > rt.idx {
                 return false;
             }
         }
@@ -425,44 +388,45 @@ async fn epilogue(rt: &'static NodeRt) {
 
 /// The single worker body every node runs. `Pause` nodes park (ack, wait,
 /// resume in place, keeping held resources); everything else runs
-/// cancellable. The wedge fault escapes both wrappers so a stop runs into
-/// `ShutdownTimeout` for real.
+/// cancellable. The body sits inside the crate's `Injected` shell, exactly
+/// where the `task:` macro puts a worker: an injected stall withholds its
+/// polls, a crash drops it, and a wedge (which lives in the node, not the
+/// shell) hides the stop request and swallows the ack. Nothing in the
+/// behaviors cooperates with a fault.
 pub async fn run(rt: &'static NodeRt) {
     rt.node.adopt_current().await;
-    let work = async {
-        prologue(rt);
-        if rt.node.mode() == Mode::Pause {
-            // Parked-and-resumed runs the body again, in place; a body that
-            // returns on its own (injected exit) truly ends the task, like
-            // any crashed worker.
-            while rt.node.run_pausable(body(rt)).await.is_err() {}
-            epilogue(rt).await;
-            rt.node.mark_exited();
-        } else {
-            let done = rt.node.run_cancellable(body(rt)).await;
-            // The body future is dropped at whatever await it sat on, so a
-            // busy mark or readiness asserted mid-cycle would outlive the
-            // task: a bound-stopped session would report busy forever, and a
-            // stopped module would still read ready to its bound dependents.
-            // Clear both here, the one place every stop path funnels through,
-            // and the session flag with them: a stopped member's client is
-            // free for a sibling to serve.
-            rt.node.mark_idle();
-            rt.node.clear_ready();
-            rt.session_open.store(false, Ordering::Relaxed);
-            epilogue(rt).await;
-            match done {
-                // Both paths end in `ack_dropped`, which releases the node's
-                // budget claims (`mark_exited` acks the same way).
-                Ok(()) => rt.node.mark_exited(),
-                // Stop requested: ordered teardown first, ack after.
-                Err(_aborted) => rt.node.ack_dropped(),
+    prologue(rt);
+    if rt.node.mode() == Mode::Pause {
+        // `Err`: parked and resumed, rerun the body in place. `Ok`: body
+        // returned or crashed, so the task ends like any finished worker.
+        loop {
+            let body = core::pin::pin!(body(rt));
+            if rt
+                .node
+                .run_pausable(Injected::new(rt.node, body))
+                .await
+                .is_ok()
+            {
+                break;
             }
         }
-    };
-    match select(work, wait_wedge(rt)).await {
-        Either::First(()) => {}
-        Either::Second(()) => core::future::pending::<()>().await,
+        epilogue(rt).await;
+        rt.node.mark_exited();
+    } else {
+        let body = core::pin::pin!(body(rt));
+        let done = rt.node.run_cancellable(Injected::new(rt.node, body)).await;
+        // The body is dropped mid-await, so any busy/ready state and the
+        // session flag would outlive the task. Clear them on every stop path.
+        rt.node.mark_idle();
+        rt.node.clear_ready();
+        rt.session_open.store(false, Ordering::Relaxed);
+        epilogue(rt).await;
+        match done {
+            // Both paths release budget claims. `Ok(None)` is a crash.
+            Ok(_) => rt.node.mark_exited(),
+            // Stop: teardown done, now ack.
+            Err(_aborted) => rt.node.ack_dropped(),
+        }
     }
 }
 
@@ -512,12 +476,6 @@ async fn body(rt: &'static NodeRt) {
                 let mut acc = 0.0f32;
                 loop {
                     Timer::after_millis(*period_ms).await;
-                    if exit_requested(rt) {
-                        return;
-                    }
-                    if stalled(rt) {
-                        continue;
-                    }
                     rt.node.beat();
                     if *scaled {
                         acc = (acc + input_f32(rt)).clamp(0.0, 16.0);
@@ -540,12 +498,6 @@ async fn body(rt: &'static NodeRt) {
             node.report_status("processing");
             loop {
                 Timer::after_millis(*work_ms).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 // A starved stage stays alive (it beats) but produces
                 // nothing until upstream writes again.
@@ -576,12 +528,6 @@ async fn body(rt: &'static NodeRt) {
             let mut acc = 0.0f32;
             loop {
                 Timer::after_millis(200).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 acc += input_f32(rt);
                 let arrived = claim_new(rt);
@@ -606,12 +552,6 @@ async fn body(rt: &'static NodeRt) {
             node.report_status("polling");
             loop {
                 Timer::after_millis(*period_ms).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 // One serialized field transaction; the device dial stretches
                 // it (more registers, slower peers). A cycle eating most of
@@ -660,13 +600,6 @@ async fn body(rt: &'static NodeRt) {
             let mut hot = false;
             loop {
                 Timer::after_millis(tick_ms).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    last = Instant::now();
-                    continue;
-                }
                 rt.node.beat();
                 let now = Instant::now();
                 let elapsed_ms = now.saturating_duration_since(last).as_millis();
@@ -751,10 +684,7 @@ async fn body(rt: &'static NodeRt) {
                 node.report_status("nothing to allocate");
                 loop {
                     Timer::after_millis(*period_ms).await;
-                    if exit_requested(rt) {
-                        return;
-                    }
-                    beat_unless_stalled(rt);
+                    rt.node.beat();
                 }
             };
             let budget = res.slot.budget().unwrap();
@@ -770,10 +700,7 @@ async fn body(rt: &'static NodeRt) {
             let policy = ShrinkFastGrowSlow::new(*step, Duration::from_millis(*period_ms));
             node.report_status("allocating");
             loop {
-                if exit_requested(rt) {
-                    return;
-                }
-                beat_unless_stalled(rt);
+                rt.node.beat();
                 // The allocator watches its declared inputs (site load, a
                 // derate) — consume them so the dataflow reads as live.
                 let _ = read_new(rt);
@@ -800,12 +727,6 @@ async fn body(rt: &'static NodeRt) {
             let mut open = false;
             loop {
                 Timer::after_millis(200).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 // The dial is the client count, the pool max the real
                 // session cap. The check and the flag store share one poll,
@@ -852,12 +773,6 @@ async fn body(rt: &'static NodeRt) {
             let mut seen = false;
             loop {
                 Timer::after_millis(*period_ms).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 // A fixed-rate loop never skips an output: with fresh input
                 // it tracks, without it holds last-good instead of dying.
@@ -914,12 +829,6 @@ async fn body(rt: &'static NodeRt) {
             node.report_status("serving");
             loop {
                 Timer::after_millis(500).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 write_all(rt);
             }
@@ -944,13 +853,10 @@ async fn body(rt: &'static NodeRt) {
             apply_up(up);
             loop {
                 Timer::after_millis(100).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                beat_unless_stalled(rt);
+                rt.node.beat();
                 // An up link transmits: it consumes its declared reads
                 // (upload frames); a down link lets them back up.
-                if up && !stalled(rt) {
+                if up {
                     let _ = read_new(rt);
                 }
                 let want_up = input_f32(rt) > 0.5;
@@ -1012,12 +918,6 @@ async fn body(rt: &'static NodeRt) {
                 log::info!("{}: producer serving, consuming", node.name());
                 loop {
                     Timer::after_millis(*period_ms).await;
-                    if exit_requested(rt) {
-                        return;
-                    }
-                    if stalled(rt) {
-                        continue;
-                    }
                     rt.node.beat();
                     // A gated consumer that also declares writes: is a gated
                     // pipeline stage (read through the gate, produce onward);
@@ -1036,10 +936,7 @@ async fn body(rt: &'static NodeRt) {
             // pane with churn. Only the drained transition is news.
             node.report_status("cycling leases");
             loop {
-                if exit_requested(rt) {
-                    return;
-                }
-                beat_unless_stalled(rt);
+                rt.node.beat();
                 match leased.lease() {
                     Some(lease) => {
                         // Taking the lease is the read: consume whatever the
@@ -1075,12 +972,6 @@ async fn body(rt: &'static NodeRt) {
                 .store(true, Ordering::Relaxed);
             loop {
                 Timer::after_millis(*feed_ms).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 feed();
             }
@@ -1104,10 +995,7 @@ async fn body(rt: &'static NodeRt) {
                 node.report_status("no veto to write");
                 loop {
                     Timer::after_millis(*period_ms).await;
-                    if exit_requested(rt) {
-                        return;
-                    }
-                    beat_unless_stalled(rt);
+                    rt.node.beat();
                 }
             };
             // Re-evaluate the pickup on every (re)start: a bit left up by a
@@ -1131,12 +1019,6 @@ async fn body(rt: &'static NodeRt) {
                     );
                 }
                 Timer::after_millis(*period_ms).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 let _ = read_new(rt);
             }
@@ -1154,10 +1036,7 @@ async fn body(rt: &'static NodeRt) {
                 node.report_status("no veto to watch");
                 loop {
                     Timer::after_millis(*period_ms).await;
-                    if exit_requested(rt) {
-                        return;
-                    }
-                    beat_unless_stalled(rt);
+                    rt.node.beat();
                 }
             };
             node.report_status("clear");
@@ -1173,12 +1052,6 @@ async fn body(rt: &'static NodeRt) {
                     }
                 };
                 let _ = select(wake, Timer::after_millis(*period_ms)).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                if stalled(rt) {
-                    continue;
-                }
                 rt.node.beat();
                 let now = gate.is_asserted();
                 if now != vetoed {
@@ -1206,10 +1079,7 @@ async fn body(rt: &'static NodeRt) {
             node.set_ready();
             loop {
                 Timer::after_millis(1000).await;
-                if exit_requested(rt) {
-                    return;
-                }
-                beat_unless_stalled(rt);
+                rt.node.beat();
             }
         }
     }

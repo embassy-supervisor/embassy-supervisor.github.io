@@ -39,6 +39,7 @@ pub struct DepModel {
 #[derive(Serialize, Clone)]
 pub struct ResourceModel {
     pub name: String,
+    pub local: bool,
     pub consume: bool,
     pub shared: bool,
     /// `divisible`: a budget the holder claims a share of, not a slot.
@@ -69,6 +70,7 @@ pub struct NodeModel {
     pub provides: Vec<String>,
     pub disabled: bool,
     pub executor: Option<String>,
+    pub executor_defaulted: bool,
     pub slot_timeout_ms: Option<u64>,
     pub ack_timeout_ms: Option<u64>,
     pub beat_timeout_ms: Option<u64>,

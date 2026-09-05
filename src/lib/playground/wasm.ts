@@ -72,10 +72,20 @@ export interface NodeModel {
   mode: string;
   deps: DepModel[];
   task: string | null;
-  resources: { name: string; consume: boolean; shared: boolean; divisible: boolean; serialized: boolean }[];
+  resources: {
+    name: string;
+    local: boolean;
+    consume: boolean;
+    shared: boolean;
+    divisible: boolean;
+    serialized: boolean;
+  }[];
   provides: string[];
   disabled: boolean;
+  /** Where the task spawns: an explicit `executor:` or the graph's `default executor`. */
   executor: string | null;
+  /** The executor was inherited from `default executor`, not written on the node. */
+  executor_defaulted: boolean;
   beat_timeout_ms: number | null;
   reads: { name: string; observed: boolean; beat: boolean; veto: boolean }[];
   writes: { name: string; observed: boolean; beat: boolean; veto: boolean }[];
@@ -135,8 +145,9 @@ export interface NodeSnap {
   want: number | null;
   /** Liveness-policed (beat_timeout declared): only then is beat age meaningful. */
   policed: boolean;
-  /** Declared executor name; null = the root executor. */
+  /** Executor name (null = the root executor): written on the node, or inherited from `default executor`. */
   executor: string | null;
+  executor_defaulted: boolean;
   /** Trace executor id this node last polled on (0 = never polled). */
   exec_id: number;
   /** Genuine poll count from the trace recorders. */
@@ -145,6 +156,8 @@ export interface NodeSnap {
   last_poll_us: number;
   max_poll_us: number;
   exec_us: number;
+  /** The injected fault the node carries (`stall`, `wedge`), or null. */
+  fault: string | null;
 }
 export interface SignalSnap {
   name: string;

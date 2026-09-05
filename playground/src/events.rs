@@ -8,7 +8,7 @@
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
-use embassy_supervisor::{NodeFault, trace};
+use embassy_supervisor::{Fault, NodeFault, trace};
 use serde::Serialize;
 
 use crate::registry::{self, Gate, HELD_BY_NONE, NodeRt};
@@ -44,12 +44,11 @@ pub struct NodeSnap {
     /// This node's share of its first `divisible` resource, when it holds one.
     pub grant: Option<u32>,
     pub want: Option<u32>,
-    /// Whether the liveness monitor polices this node (`beat_timeout:`
-    /// declared). Without a budget, `ticks_since_beat` is just time since
-    /// spawn — a counter that reads as activity on a node that never beats.
+    /// Set if the node declares `beat_timeout:`.
     pub policed: bool,
-    /// Declared executor name (`null` = the root executor).
+    /// Node's executor, or `None` for the root executor.
     pub executor: Option<&'static str>,
+    pub executor_defaulted: bool,
     /// The trace executor id this node last polled on (0 = never polled).
     pub exec_id: u32,
     /// Genuine counts from the trace recorders.
@@ -59,6 +58,9 @@ pub struct NodeSnap {
     pub last_poll_us: u32,
     pub max_poll_us: u32,
     pub exec_us: u64,
+    /// Active fault, if any. Crashes clear when the shell drops; stalls
+    /// survive stops and restarts.
+    pub fault: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -216,11 +218,16 @@ pub fn node_snap(idx: u8, rt: &'static NodeRt) -> NodeSnap {
             .map(|(r, c)| r.slot.budget().map_or(0, |b| b.want_of(c.slot()))),
         policed: rt.model.beat_timeout_ms.is_some(),
         executor: rt.model.executor.as_deref(),
+        executor_defaulted: rt.model.executor_defaulted,
         exec_id: rt.exec_id.load(Ordering::Relaxed),
         polls: node.poll_count(),
         last_poll_us: rt.last_poll_us.load(Ordering::Relaxed),
         max_poll_us: rt.max_poll_us.load(Ordering::Relaxed),
         exec_us: rt.exec_us.load(Ordering::Relaxed),
+        fault: match node.fault() {
+            Fault::None => None,
+            f => Some(f.as_str()),
+        },
     }
 }
 

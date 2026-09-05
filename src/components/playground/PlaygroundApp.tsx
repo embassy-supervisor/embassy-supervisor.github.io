@@ -16,7 +16,7 @@ import DevicePane from './DevicePane';
 import LogPane from './LogPane';
 import TaskPane from './TaskPane';
 
-type Phase = 'loading' | 'idle' | 'running' | 'faulted' | 'error';
+type Phase = 'loading' | 'idle' | 'running' | 'error';
 
 const MAX_LOGS = 400;
 
@@ -114,9 +114,10 @@ export default function PlaygroundApp() {
         return next.length > MAX_LOGS ? next.slice(next.length - MAX_LOGS) : next;
       });
     }
+    // The supervisor re-enters its loop after a fault (see api.rs), so the
+    // run keeps going; the banner and the device pane list what it hit.
     if (snap.faults.length) {
       setFaults((old) => old.concat(snap.faults));
-      setPhase('faulted');
     }
     if (snap.watchdog_bite) {
       setRebootCount((n) => n + 1);
@@ -484,7 +485,7 @@ export default function PlaygroundApp() {
   const declOf = useCallback((name: string) => extractDecl(dsl, name), [dsl]);
 
   const clockMs = snapshot ? Math.round(snapshot.now_us / 1000) : 0;
-  const running = phase === 'running' || phase === 'faulted';
+  const running = phase === 'running';
 
   const runLabel = useMemo(() => {
     if (phase === 'loading') return 'Loading…';
@@ -564,8 +565,15 @@ export default function PlaygroundApp() {
             t = {(clockMs / 1000).toFixed(2)}s
           </span>
         </div>
-        {phase === 'faulted' && <span className="pg-fault-banner">supervisor faulted — Restart to run again</span>}
-        {rebooted && phase !== 'faulted' && (
+        {faults.length > 0 && (
+          <span
+            className="pg-fault-banner"
+            title="the supervisor loop reported this and re-entered; clear the fault and restart the node from its card"
+          >
+            supervisor fault: {faults[faults.length - 1]}
+          </span>
+        )}
+        {rebooted && faults.length === 0 && (
           <span className="pg-fault-banner" title="the watchdog feeder stopped; the hardware watchdog reset the system">
             ↻ hardware watchdog rebooted the MCU
           </span>

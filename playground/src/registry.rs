@@ -7,30 +7,15 @@
 //! filled exactly once by the builder.
 
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize};
 
 use embassy_executor::{SpawnError, Spawner};
 use embassy_supervisor::{
     Backed, Budget, Claimant, Coupling, Leased, ResourceGate, ResourceSlot, TaskNode, VetoGate,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
 
 use crate::behavior::Behavior;
 use crate::model::{MAX_NODES, MAX_SIGNALS, MAX_VETO_SLOTS, NodeModel};
-
-/// Injected fault states, one per node (see `api::inject`).
-pub mod fault {
-    pub const NONE: u8 = 0;
-    /// Stop beating AND stop acking shutdown: teardown/restart runs into
-    /// `ShutdownTimeout`.
-    pub const WEDGE: u8 = 1;
-    /// Stop beating but keep acking: the liveness monitor reports `Stale`.
-    pub const STALL: u8 = 2;
-    /// Return from the worker abruptly ("crash": a real panic would kill the
-    /// whole wasm instance).
-    pub const EXIT: u8 = 3;
-}
 
 /// The simulated hardware watchdog: armed by a `watchdog` behavior, fed
 /// while its task runs. When feeding stops, the bite (checked per frame in
@@ -183,11 +168,6 @@ pub struct NodeRt {
     pub lends: Vec<&'static ResourceRt>,
     /// One claimant per `divisible` resource this node holds (slot = `idx`).
     pub claims: Vec<(&'static ResourceRt, Claimant)>,
-    pub fault: AtomicU8,
-    /// Wakes the wedge watcher when a wedge fault is injected: the watcher
-    /// must not poll a timer, or every task — a parked Pause task included —
-    /// would show 20 polls a second in the task panel.
-    pub wedge_wake: Signal<CriticalSectionRawMutex, ()>,
     /// Widget-driven input (f32 bits): sensor value, link up/down, load dial.
     pub input: AtomicU32,
     /// Index into [`pools`] of the pool this node is a member of.

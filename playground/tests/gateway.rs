@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration as StdDuration;
 
 use embassy_executor::{Executor, Spawner};
-use embassy_supervisor::{ControlOp, try_request_control};
+use embassy_supervisor::{ControlOp, Fault, try_request_control};
 use embassy_supervisor_playground::{build, parse, registry};
 use embassy_time::{Duration, MockDriver};
 
@@ -150,9 +150,7 @@ fn gateway_runs() {
 
     // A crashed producer starves its consumers: reads must freeze with the
     // writes instead of counting phantom consumption of a dead signal.
-    by_name("SENSOR_BUS")
-        .fault
-        .store(registry::fault::EXIT, Ordering::Relaxed);
+    by_name("SENSOR_BUS").node.inject(Fault::Crash).unwrap();
     assert!(
         settle(|| by_name("SENSOR_BUS").node.has_exited(), 2000),
         "crashed sensor should exit"
@@ -177,9 +175,7 @@ fn gateway_runs() {
         "starved consumers stay alive"
     );
     // Restart the sensor; the pipeline picks back up.
-    by_name("SENSOR_BUS")
-        .fault
-        .store(registry::fault::NONE, Ordering::Relaxed);
+    by_name("SENSOR_BUS").node.clear_fault();
     try_request_control(by_name("SENSOR_BUS").node, ControlOp::Restart).unwrap();
     assert!(
         settle(|| raw.reads.load(Ordering::Relaxed) > raw_r, 3000),
@@ -198,9 +194,7 @@ fn gateway_runs() {
     );
 
     // Fault injection: stall the sensor; the liveness monitor reports Stale.
-    by_name("SENSOR_BUS")
-        .fault
-        .store(registry::fault::STALL, Ordering::Relaxed);
+    by_name("SENSOR_BUS").node.inject(Fault::Stall).unwrap();
     assert!(
         settle(
             || by_name("SENSOR_BUS").node.ticks_since_beat() > 500_000,
@@ -208,9 +202,7 @@ fn gateway_runs() {
         ),
         "stalled sensor should stop beating"
     );
-    by_name("SENSOR_BUS")
-        .fault
-        .store(registry::fault::NONE, Ordering::Relaxed);
+    by_name("SENSOR_BUS").node.clear_fault();
 
     // Restart bumps the epoch and comes back.
     let epoch = by_name("FILTER").node.epoch();

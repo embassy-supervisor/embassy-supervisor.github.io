@@ -66,12 +66,13 @@ export function tokenizeDsl(text: string): DslToken[] {
 
 /**
  * Extract one item's declaration from DSL source: `node NAME = ...;`,
- * `pool NAME = ...;` or `executor NAME;`, dedented to its own left margin.
- * Declarations carry no inner semicolons, so the next `;` closes them.
+ * `pool NAME = ...;`, `executor NAME;` or `default executor NAME;`, dedented
+ * to its own left margin. Declarations carry no inner semicolons, so the
+ * next `;` closes them.
  */
 export function extractDecl(src: string, name: string): string | null {
   const ident = name.replace(/[^A-Za-z0-9_]/g, '');
-  const re = new RegExp(`(?:^|\\n)([ \\t]*)((?:node|pool|executor)\\s+${ident}\\b[^;]*;?)`);
+  const re = new RegExp(`(?:^|\\n)([ \\t]*)((?:node|pool|(?:default\\s+)?executor)\\s+${ident}\\b[^;]*;?)`);
   const m = re.exec(src);
   if (!m) return null;
   const indent = m[1];

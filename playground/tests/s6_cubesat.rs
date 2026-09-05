@@ -3,10 +3,10 @@
 //! window opens, the attitude chain gates on a real estimate, and health
 //! services answer a stalled app with an automatic restart.
 
-use std::sync::atomic::Ordering;
 use std::time::Duration as StdDuration;
 
 use embassy_executor::{Executor, Spawner};
+use embassy_supervisor::Fault;
 use embassy_supervisor_playground::{build, health, parse, registry};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -179,9 +179,7 @@ fn scheduler_demand_start_and_hs_ladder() {
 
     // HS ladder, first rung: a stalled app is restarted automatically.
     let epoch = by_name("ADCS_SENSE").node.epoch();
-    by_name("ADCS_SENSE")
-        .fault
-        .store(registry::fault::STALL, Ordering::Relaxed);
+    by_name("ADCS_SENSE").node.inject(Fault::Stall).unwrap();
     assert!(
         settle(
             || by_name("ADCS_SENSE").node.epoch() > epoch
@@ -190,7 +188,5 @@ fn scheduler_demand_start_and_hs_ladder() {
         ),
         "the escalation restarts the stalled app"
     );
-    by_name("ADCS_SENSE")
-        .fault
-        .store(registry::fault::NONE, Ordering::Relaxed);
+    by_name("ADCS_SENSE").node.clear_fault();
 }

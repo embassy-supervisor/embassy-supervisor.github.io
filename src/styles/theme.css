@@ -1763,6 +1763,12 @@ figure.graph .cluster rect {
   border-radius: 4px;
   padding: 0 0.25rem;
 }
+/* An executor inherited from `default executor`: the tier is shown once at
+   the top of the graph, so the per-node chip steps back. */
+.pg-exec-default {
+  color: var(--sup-muted);
+  border-style: dashed;
+}
 .pg-node-status {
   color: var(--sup-label);
   overflow: hidden;
@@ -2140,6 +2146,10 @@ figure.graph .cluster rect {
 .chip-detached {
   color: var(--sup-violet);
   border-color: var(--sup-violet);
+}
+.chip-fault {
+  color: var(--sup-rose);
+  border-color: var(--sup-rose);
 }
 .chip-grant {
   color: var(--sup-lime);

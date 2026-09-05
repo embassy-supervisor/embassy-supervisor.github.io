@@ -8,7 +8,7 @@
 use std::cell::UnsafeCell;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize};
 
 use embassy_supervisor::{
     Backed, Budget, Claimant, Coupling, CouplingPoint, DeferredShrink, Divisible, ElasticPool,
@@ -368,6 +368,11 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
         };
         let spawn = m.task.as_ref().map(|_| registry::SPAWN_FNS[i]);
         let mut cfg = NodeCfg::new(leak_str(&m.name), mode, spawn).with_graph(graph_ref);
+        // Task nodes use the injected shell so stall/crash apply; parked
+        // nodes only wedge, like a spawned task.
+        if spawn.is_some() {
+            cfg = cfg.with_shell();
+        }
 
         if let Some(ms) = m.slot_timeout_ms {
             cfg = cfg.with_slot_timeout(Duration::from_millis(ms));
@@ -607,8 +612,6 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
             consumes,
             lends,
             claims,
-            fault: AtomicU8::new(0),
-            wedge_wake: embassy_sync::signal::Signal::new(),
             input: AtomicU32::new(input.to_bits()),
             pool: model
                 .pools

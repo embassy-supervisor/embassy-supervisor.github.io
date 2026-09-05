@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration as StdDuration;
 
 use embassy_executor::{Executor, Spawner};
+use embassy_supervisor::Fault;
 use embassy_supervisor_playground::{build, health, parse, registry};
 use embassy_time::{Duration, MockDriver};
 
@@ -145,9 +146,7 @@ fn safety_ladder() {
     // Stall the protection loop: the policy withdraws its readiness and the
     // contactors OPEN through the bound edge — no restart of a wedged loop.
     let protect_epoch = by_name("PROTECT").node.epoch();
-    by_name("PROTECT")
-        .fault
-        .store(registry::fault::STALL, Ordering::Relaxed);
+    by_name("PROTECT").node.inject(Fault::Stall).unwrap();
     assert!(
         settle(|| !by_name("PROTECT").node.is_ready(), 5000),
         "the policy withdraws PROTECT's readiness"
@@ -169,9 +168,7 @@ fn safety_ladder() {
     // Stall the SoC estimator: the policy activates the disabled LIMP
     // limiter, a second writer of the same limits signal.
     assert!(!by_name("LIMP").node.is_running());
-    by_name("SOC")
-        .fault
-        .store(registry::fault::STALL, Ordering::Relaxed);
+    by_name("SOC").node.inject(Fault::Stall).unwrap();
     assert!(
         settle(|| by_name("LIMP").node.is_running(), 8000),
         "the policy activates LIMP"

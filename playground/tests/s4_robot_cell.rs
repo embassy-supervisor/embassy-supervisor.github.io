@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration as StdDuration;
 
 use embassy_executor::{Executor, Spawner};
-use embassy_supervisor::{ControlOp, try_request_control};
+use embassy_supervisor::{ControlOp, Fault, try_request_control};
 use embassy_supervisor_playground::{build, health, parse, registry};
 use embassy_time::{Duration, MockDriver};
 
@@ -180,9 +180,7 @@ fn sto_cascade_and_starvation() {
     // Segment starvation: the program source dies (deactivate would take
     // its dependents with it — a crash starves them instead); segments
     // freeze but the motion tier holds last-good — setpoints keep flowing.
-    by_name("PENDANT")
-        .fault
-        .store(registry::fault::EXIT, Ordering::Relaxed);
+    by_name("PENDANT").node.inject(Fault::Crash).unwrap();
     assert!(settle(|| by_name("PENDANT").node.has_exited(), 3000));
     advance_ms(7000); // drain whatever queued during bring-up
     let seg = writes_of("signals::SEGMENTS");
@@ -196,9 +194,7 @@ fn sto_cascade_and_starvation() {
         writes_of("signals::SETPOINTS") > set_before + 3,
         "the interpolator holds last-good instead of freezing"
     );
-    by_name("PENDANT")
-        .fault
-        .store(registry::fault::NONE, Ordering::Relaxed);
+    by_name("PENDANT").node.clear_fault();
     try_request_control(by_name("PENDANT").node, ControlOp::Restart).unwrap();
     assert!(settle(|| by_name("PENDANT").node.is_running(), 3000));
 
@@ -231,9 +227,7 @@ fn sto_cascade_and_starvation() {
 
     // STO: stall channel A. The policy withdraws its readiness; the cascade
     // runs the safety plane down through every bound edge.
-    by_name("SAFE_CH_A")
-        .fault
-        .store(registry::fault::STALL, Ordering::Relaxed);
+    by_name("SAFE_CH_A").node.inject(Fault::Stall).unwrap();
     assert!(
         settle(|| by_name("SAFE_IO").node.is_bound_stopped(), 6000),
         "safety IO follows the failed channel"
@@ -249,9 +243,7 @@ fn sto_cascade_and_starvation() {
 
     // Recovery: clear the fault and restart the channel; the bound cascade
     // brings the plane back up in order.
-    by_name("SAFE_CH_A")
-        .fault
-        .store(registry::fault::NONE, Ordering::Relaxed);
+    by_name("SAFE_CH_A").node.clear_fault();
     try_request_control(by_name("SAFE_CH_A").node, ControlOp::Restart).unwrap();
     assert!(
         settle(

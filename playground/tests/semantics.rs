@@ -7,7 +7,7 @@
 use std::sync::atomic::Ordering;
 
 use embassy_executor::{Executor, Spawner};
-use embassy_supervisor::{ControlOp, try_request_control};
+use embassy_supervisor::{ControlOp, Fault, try_request_control};
 use embassy_supervisor_playground::{build, parse, registry};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -139,14 +139,10 @@ fn interpreter_matches_the_crate() {
         "held_by names the taker"
     );
     // ... restored on exit, so a respawn re-takes the same instance.
-    by_name("LENDER")
-        .fault
-        .store(registry::fault::EXIT, Ordering::Relaxed);
+    by_name("LENDER").node.inject(Fault::Crash).unwrap();
     assert!(settle(|| by_name("LENDER").node.has_exited(), 3000));
     assert!(port.slot.is_filled(), "a lent value comes back at exit");
-    by_name("LENDER")
-        .fault
-        .store(registry::fault::NONE, Ordering::Relaxed);
+    by_name("LENDER").node.clear_fault();
     try_request_control(by_name("LENDER").node, ControlOp::Restart).unwrap();
     assert!(
         settle(
@@ -160,17 +156,13 @@ fn interpreter_matches_the_crate() {
     // until something re-provides.
     assert!(settle(|| by_name("BURNER").node.is_running(), 2000));
     assert!(!runner.slot.is_filled(), "consumed at spawn");
-    by_name("BURNER")
-        .fault
-        .store(registry::fault::EXIT, Ordering::Relaxed);
+    by_name("BURNER").node.inject(Fault::Crash).unwrap();
     assert!(settle(|| by_name("BURNER").node.has_exited(), 3000));
     assert!(
         !runner.slot.is_filled(),
         "a consumed value does not come back"
     );
-    by_name("BURNER")
-        .fault
-        .store(registry::fault::NONE, Ordering::Relaxed);
+    by_name("BURNER").node.clear_fault();
     try_request_control(by_name("BURNER").node, ControlOp::Restart).unwrap();
     advance_ms(1000); // past the 200 ms slot_timeout
     assert!(
