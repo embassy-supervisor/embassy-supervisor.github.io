@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 import { rehypeTableScroll } from './src/plugins/rehype-table-scroll.mjs';
+import { sitemapAlias } from './src/plugins/sitemap-alias.mjs';
 
 // GitHub Pages org site: served at the domain root. Change both when the
 // site moves to a custom domain or a project-page repository.
@@ -128,5 +129,7 @@ export default defineConfig({
         },
       ],
     }),
+    // After starlight: it owns the sitemap, this only copies the result.
+    sitemapAlias(),
   ],
 });
