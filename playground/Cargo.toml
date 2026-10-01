@@ -14,7 +14,7 @@ description = "In-browser playground for embassy-supervisor: real runtime + real
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-embassy-supervisor = { version = "0.10.0", features = [
+embassy-supervisor = { version = "0.11.0", features = [
     "macros",
     "control",
     "pool",

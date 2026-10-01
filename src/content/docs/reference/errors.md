@@ -32,7 +32,7 @@ arrives with the `defmt` feature.
 
 | `FaultKind` | what it names | returned by |
 |---|---|---|
-| `ExecutorSlotEmpty` | an `executor:` slot still empty at the deadline | `start`, `start_node`, cascades, pool growth |
+| `ExecutorSlotEmpty` | an `executor:` slot still empty at the deadline | `start`, `start_node`, `respawn_terminate`, `activate`, direct `restart`, pool growth |
 | `ResourceMissing` | a `resources:` slot, or an unprovided `divisible` budget, unfilled at the deadline | same |
 | `ReadyDepTimeout { dep }` | a `ready` dep that never asserted | same |
 | `Spawn(SpawnError)` | the executor refused the spawn (full task pool, busy slot) | same |

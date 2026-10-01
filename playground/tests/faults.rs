@@ -56,10 +56,7 @@ async fn verbs(spawner: Spawner) {
             Verb::Stop => sup.stop_node(node).await,
             Verb::Start => sup.start_node(node, &spawner).await,
             Verb::Deactivate => sup.deactivate(node).await,
-            Verb::Activate => {
-                sup.activate(node, &spawner).await;
-                Ok(())
-            }
+            Verb::Activate => sup.activate(node, &spawner).await,
         };
         RESULTS.lock().unwrap().push(r.map_err(|f| f.kind));
     }

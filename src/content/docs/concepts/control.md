@@ -35,6 +35,11 @@ onto `Activate`/`Deactivate` according to the node's mode. The supervisor
 side applies each command with `apply_control`, which is dependency- and
 pool-aware. Mailbox depth is 4.
 
+Acceptance into the mailbox is not execution success: `request_control`
+waits for queue capacity, and `try_request_control` reports only a full
+queue. Startup faults from an Activate command are returned by
+`apply_control` and propagate through the supervisor driver to its caller.
+
 The verbs that live directly on `Supervisor` when you do hold it:
 `start_node`, `stop_node`, `resume_node` (single node, no cascade), and the
 cascading pair below.
@@ -43,7 +48,7 @@ cascading pair below.
 
 `activate` and `deactivate` expand through the graph:
 
-- **`activate(&node)`** pulls the node's transitive **dependencies** up in
+- **`activate(&node, &spawner)`** pulls the node's transitive **dependencies** up in
   start order (skipping already-running ones). Activating a leaf rebuilds
   its whole supply chain.
 - **`deactivate(&node)`** stops the node and its transitive **dependents**
@@ -55,7 +60,8 @@ The pair is symmetric over a subtree: the way back from `deactivate(NET)`
 is `activate(NET)`. It clears the latch, then releases every collateral
 dependent with no disabled node left in its transitive dependencies.
 Released `Terminate` and `Pause` nodes restart in the same wave; released
-`OnDemand` pool members are left to the elastic policy. Overlapping
+`OnDemand` pool members are left to the elastic policy; activation requests
+a demand re-check even when its startup wave returns an error. Overlapping
 deactivations compose: a node under two deactivated ancestors comes back
 on the second `activate`, and a node deactivated directly keeps its latch
 through an ancestor's cycle. `start_node` overrides the hold by hand.
@@ -76,11 +82,21 @@ flowchart TD
     WIFI -. "deactivate(WIFI)<br/>drops UPLOAD, NET first" .-> UPLOAD
 ```
 
-Of the two, only `deactivate` returns a `Result`: an `Err` is the ordinary
-fault shape, most commonly a `ShutdownTimeout` naming a node that missed its
-ack. `activate` returns nothing: spawn errors during the cascade are
-deliberately swallowed (the cascade is best-effort bring-up; the failed node
-reads `!is_running()` and reports itself).
+Both cascades return `Result<(), NodeFault>`. `deactivate` commonly returns
+a `ShutdownTimeout` naming a node that missed its ack.
+`activate(&node, &spawner).await` completes the best-effort startup wave and
+returns the first startup fault, or `Ok(())` if none occurs. Successful
+starts are not rolled back, so an error can leave a partially running
+graph. Already-running nodes are skipped, and selecting no work succeeds.
+Handle the result with `.await?` or explicit error handling:
+
+```rust
+sup.activate(&UPLOAD, &spawner).await?;
+```
+
+The same activation result is returned by `apply_control` for
+`ControlOp::Activate`, so the driver can return the fault rather than
+silently accepting a failed activation.
 
 ## `restart`: one subtree cycles
 
@@ -102,6 +118,11 @@ loop {
 `Pause` nodes in the subtree are resumed, never respawned (their parked task
 keeps its state and its task-pool slot). The disabled latch sticks: a
 manually stopped node is not revived by a restart above it.
+
+A direct `restart` call returns startup faults as well as shutdown
+timeouts. The control Restart policy is different from Activate:
+`apply_control` propagates Restart's shutdown timeout but logs and absorbs
+its startup faults. That policy is unchanged.
 
 ## The split single-node verbs
 

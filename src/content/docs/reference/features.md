@@ -49,7 +49,7 @@ feature, never a silent behavior change.
 A reasonable "most of the model" set for a connected device:
 
 ```toml
-embassy-supervisor = { version = "0.8", features = [
+embassy-supervisor = { version = "0.11", features = [
     "readiness", "liveness-monitor", "control", "pool",
     "coupling-observe", "dataflow", "defmt",
 ] }
