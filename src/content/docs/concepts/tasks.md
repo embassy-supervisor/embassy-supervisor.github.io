@@ -38,6 +38,14 @@ sequenceDiagram
    on respawn (drop-on-exit is the cleanup). A `Pause` task keeps what it
    holds across park and resume, and never re-acquires.
 
+A `task:` shell runs the worker once per activation; each restart runs it
+again from scratch (see [Restarting `task:`
+nodes](/concepts/lifecycle#restarting-task-nodes)). Extras and resources are
+taken at the start of each activation. If a resource was taken by someone
+else in the meantime, that run ends with a warning and the node reads as
+down instead of panicking; it can be restarted once the resource is back. A
+`state:` type must be `Send`.
+
 ## The task-side methods
 
 | method | role |
@@ -52,7 +60,7 @@ sequenceDiagram
 | `wait_resume().await` | `Pause` only: park (after acking) until resumed |
 | `mark_busy()` / `mark_idle()` | pool load reporting; a real transition fires the scale signal itself |
 | `shutdown_requested()` | synchronous check, for example at the top of a loop |
-| `has_exited()` | true once the last instance's body returned; cleared by the next spawn's reset |
+| `has_exited()` | true once the last instance's body returned; cleared by the reset before the next activation |
 | `set_detached(true)` | become self-managed from here on |
 | `adopt(&token)` | parked nodes: register a hand-spawned task for trace attribution |
 | `open(&SIG).await` | feature `data-deps`: run the signal's gate (start its producer if `Backed`) and hand back the counted `Open` guard; [Gated reads](/concepts/data-deps/) has the contract |
@@ -149,7 +157,7 @@ static, including ISRs and driver callbacks, can call `NODE.beat()` or
 |---|---|
 | `is_running()` | an instance is up (spawned, not acked or exited) |
 | `is_busy()` | the instance reported `mark_busy()` |
-| `is_disabled()` | stopped at boot or deactivated directly (the `Deactivate` seed) |
+| `is_disabled()` | latched by the `disabled` clause, by an `enabled_if:` predicate that returned false at `start()`, or by a direct deactivation (the `Deactivate` seed) |
 | `is_collateral()` | stopped as a dependent of a deactivated node; `Activate` on the ancestor releases it |
 | `is_detached()` | self-managed; lifecycle ops skip it |
 | `has_exited()` | the last instance's body returned |

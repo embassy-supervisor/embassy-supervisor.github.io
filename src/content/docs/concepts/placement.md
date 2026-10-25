@@ -150,10 +150,14 @@ change, none caught by the compiler:
   `task:` arguments are evaluated on the target tier; `spawn:` arguments and
   `state:` heap boxes run on the supervisor's executor.
 - **The supervisor's own work runs elevated**: sweeps, ack-timeout waits,
-  teardown waves and pool scaling. That is the point, or the cost.
-- **Keep a hardware watchdog feeder on the tier it watches.** A feeder above
-  thread mode keeps running through a hogged thread executor and masks the
-  hang the watchdog should catch.
+  teardown waves, pool scaling, and a `lifecycle-sink` callback. That is the
+  point, or the cost.
+- **A hardware watchdog feeder on the elevated tier can mask hangs on the
+  tier it watches.** It keeps running through a hogged thread executor. Keep
+  the feeder on the tier it watches, or make the feed conditional on that
+  tier's health: `if GRAPH.all_fresh() { wd.feed(..) }` (`liveness-monitor`)
+  withholds it while any node with a `beat_timeout:` is running but not
+  beating ([Watchdog feed gate](/concepts/health#watchdog-feed-gate)).
 - **A second core cannot wake an interrupt executor on its own.** Embassy
   pends an `InterruptExecutor` IRQ in the local NVIC, and each core has its
   own. A wake from the other core is lost, and run-queue coalescing can turn
@@ -161,13 +165,28 @@ change, none caught by the compiler:
   because `sev` reaches both cores. If the graph spans cores, relay the pend
   through a shared SWI handler or doorbell.
 
+## Restarts across tiers
+
+A supervisor on a higher-priority executor or another core restarts nodes on
+any tier: stop `net` from an interrupt-priority supervisor and it comes back
+in thread mode within milliseconds on the demo. There is nothing to
+configure; `supervisor_graph!` sets up what each `executor NAME;` needs.
+`SpawnerSlot::set` takes `&'static self`, which the slot statics the macro
+emits already are.
+
+`task:` nodes need nothing from you. For a hand-written `spawn:` task, make
+acknowledging the stop its last act (`mark_exited()` or `ack_dropped()`,
+then return). A task that keeps awaiting after its ack delays its own
+restart until it returns, and if it never returns the restart fails with
+`FaultKind::Spawn` after the node's `slot_timeout`.
+
 ## `task:` extras evaluate on the target tier
 
-A `task:` partial-call argument runs inside the shell at its first poll, on
-the node's own executor: an `executor:` node builds its resources on the tier
-that runs it. When an argument must instead be snapshotted at spawn time on
-the supervisor's executor, switch that node to `spawn:` (case 4 in
-[Declaring the graph](/concepts/dsl/#task-vs-spawn)).
+A `task:` partial-call argument runs inside the shell at the start of each
+activation, on the node's own executor: an `executor:` node builds its
+resources on the tier that runs it. When an argument must instead be
+snapshotted at spawn time on the supervisor's executor, switch that node to
+`spawn:` (case 4 in [Declaring the graph](/concepts/dsl/#task-vs-spawn)).
 
 ## An empty slot is loud
 

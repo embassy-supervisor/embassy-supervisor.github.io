@@ -82,7 +82,8 @@ pub struct NodeFault {
 ```
 
 `FaultKind` names what went wrong: `ExecutorSlotEmpty`, `ResourceMissing`,
-`ReadyDepTimeout { dep }`, `Spawn(SpawnError)`, `ShutdownTimeout`. Its
+`ReadyDepTimeout { dep }`, `Spawn(SpawnError)`, `ShutdownTimeout`, and with
+`restart-intensity` `RestartStorm`. Its
 `Display` names the node and the cause, so `panic!("supervisor: {fault}")`
 produces an actionable line. All guarantees are cross-thread with proper
 atomics: a host test's main thread reads them as safely as another task.

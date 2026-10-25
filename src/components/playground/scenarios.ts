@@ -1445,10 +1445,10 @@ export const scenarios: Scenario[] = [
   {
     id: 'recovery',
     group: 'mechanisms',
-    mechanisms: 'liveness monitor, restart cascade, ShutdownTimeout',
+    mechanisms: 'liveness monitor, restart cascade, ShutdownTimeout, restart budget',
     title: 'Failure and recovery',
     blurb:
-      'A heartbeat chain watched by the liveness monitor. Stall the worker and the monitor reports it stale; wedge it and a restart runs into the shutdown-ack timeout, surfacing a real fault. Restart is a cascade: dependents stop first, in reverse order.',
+      'A heartbeat chain watched by the liveness monitor. Stall the worker and the monitor reports it stale; wedge it and a restart runs into the shutdown-ack timeout, surfacing a real fault. Restart is a cascade: dependents stop first, in reverse order. The worker allows 3 restarts in 10 s: restart it a fourth time and the restart is refused as a restart storm, with the worker left running.',
     dsl: `supervisor_graph! {
     node SOURCE = Terminate, task: crate::source::source_task,
         beat_timeout: 800,
@@ -1456,7 +1456,7 @@ export const scenarios: Scenario[] = [
 
     node WORKER = Terminate, deps: [SOURCE],
         task: crate::worker::crunch_task,
-        beat_timeout: 800,
+        beat_timeout: 800, restart_budget: 3 in 10000,
         reads: [FEED], writes: [OUT observed beat];
 
     node SINK = Terminate, deps: [WORKER],
@@ -1473,10 +1473,10 @@ export const scenarios: Scenario[] = [
   {
     id: 'bringup',
     group: 'mechanisms',
-    mechanisms: 'ready deps, provides, ready bound teardown/resume',
+    mechanisms: 'ready deps, provides, ready bound teardown/resume, start conditions',
     title: 'Gated bring-up',
     blurb:
-      "A slow provider and everything that waits on it: a ready dep holds consumers at the gate, a provided resource slot fills mid-flight, and a 'ready bound' link tears its dependents down when it drops and resumes them when it returns. Flip the link switch and watch the bound half follow.",
+      "A slow provider and everything that waits on it: a ready dep holds consumers at the gate, a provided resource slot fills mid-flight, and a 'ready bound' link tears its dependents down when it drops and resumes them when it returns. Flip the link switch and watch the bound half follow. Commands only come up when the uplink_commands() setting allows it: switch it off and run again, and COMMANDS stays disabled until you start it by hand.",
     dsl: `supervisor_graph! {
     node RADIO = Terminate, task: crate::radio::radio_task,
         provides: [RADIO_DEV], slot_timeout: 8000;
@@ -1494,6 +1494,7 @@ export const scenarios: Scenario[] = [
     node COMMANDS = Terminate, deps: [LINK ready bound],
         task: crate::commands::command_task,
         slot_timeout: 8000,
+        enabled_if: crate::settings::uplink_commands,
         reads: [TLM];
 }`,
     behaviors: {

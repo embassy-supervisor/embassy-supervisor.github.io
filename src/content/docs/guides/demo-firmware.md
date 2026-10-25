@@ -29,6 +29,9 @@ say "this is the shape", this firmware is usually the working instance.
 - **OTA firmware update** with a safe A/B swap and automatic rollback,
   orchestrated as a lifecycle transition.
 - **Tracing**: per-task and per-executor stats over the same HTTP plane.
+- **Lifecycle observability**: every supervisor transition recorded with its
+  exact time, a crash-persistent breadcrumb, and a watchdog feed gated on
+  liveness.
 
 ## The graph
 
@@ -42,13 +45,13 @@ declaration, or nothing at all.
 
 | Node | Mode | Role |
 |---|---|---|
-| `net` | Terminate | brings up the USB network stack, provides its handle |
+| `net` | Terminate | brings up the USB network stack, provides its handle; at most 3 restarts a minute (`restart_budget:`) |
 | `http` | pool 1..2 | the elastic HTTP worker pool |
-| `watchdog` | Terminate | detached daemon: feeds the hardware watchdog unconditionally, logs liveness events and trace stalls |
+| `watchdog` | Terminate | detached daemon: feeds the hardware watchdog only while every policed node is fresh, logs liveness events and trace stalls, stashes the supervisor's breadcrumb |
 | `heartbeat` | Pause | LED heartbeat on the interrupt tier, parks across sleep |
 | `ota` | Terminate | disabled at boot, control-started for updates |
 | `ota_confirm` | Terminate | run-once confirmation after an update |
-| `bench` | Terminate | compute load on core 1, control-started |
+| `bench` | Terminate | compute load on core 1, control-started, or up at boot when a boot flag allows it (`enabled_if:`) |
 
 Gate budgets (`slot_timeout:` / `beat_timeout:`) are declared per node: the
 OTA path waits on the network with a raised budget, the heartbeat carries a
@@ -89,6 +92,17 @@ as a USB-CDC-NCM link) and the control plane answers on HTTP.
   while the dashboard stays up. Crash `bench` to restart it, or hog `http0`
   and watch the dashboard freeze for three seconds while the LED keeps
   blinking.
+- **Restarts across tiers:** restart `net` from the P1 supervisor and it is
+  back in about 5 ms. The fourth
+  restart inside a minute is refused as a restart storm, `net` keeps running,
+  and the fault shows up in the dashboard and in `/api/events`.
+- **Lifecycle events:** `GET /api/events` returns the last 16 transitions,
+  recorded by a lifecycle sink at the moment each one happens.
+- **Feed gate and breadcrumb:** stall the heartbeat and leave it. Once it is
+  stale the watchdog feed is withheld, the chip resets, and the next boot
+  names the last transition the supervisor drove before the reset.
+- **Start conditions:** `bench` comes up at boot only when a boot flag in
+  watchdog scratch says so (`POST /api/bootflag`, then `POST /api/reboot`).
 
 ## Reading the observability data
 

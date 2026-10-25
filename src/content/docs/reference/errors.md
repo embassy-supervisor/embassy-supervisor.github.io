@@ -35,8 +35,9 @@ arrives with the `defmt` feature.
 | `ExecutorSlotEmpty` | an `executor:` slot still empty at the deadline | `start`, `start_node`, `respawn_terminate`, `activate`, direct `restart`, pool growth |
 | `ResourceMissing` | a `resources:` slot, or an unprovided `divisible` budget, unfilled at the deadline | same |
 | `ReadyDepTimeout { dep }` | a `ready` dep that never asserted | same |
-| `Spawn(SpawnError)` | the executor refused the spawn (full task pool, busy slot) | same |
+| `Spawn(SpawnError)` | the spawn was refused: a full task pool, a refused `state:` allocation (`heap-state`), or the previous instance of the node still running when its `slot_timeout` ran out (a `spawn:` task that keeps awaiting after its ack) | same |
 | `ShutdownTimeout` | a node that missed the shutdown-ack deadline (its divisible shares are released either way) | `stop_node`, `teardown`, `apply_control`, `run_pools` (a wedged shrink) |
+| `RestartStorm` (feature `restart-intensity`) | a `restart` refused because the node already used its `restart_budget:` inside the current window; nothing was stopped and the node keeps running as it was | `restart`, `apply_control` (`Restart` propagates it rather than absorbing it) |
 
 ## The other three
 
@@ -57,7 +58,7 @@ arrives with the `defmt` feature.
 | knob | default | override |
 |---|---|---|
 | shutdown-ack timeout (window starts when the node is signalled) | 2 s | `ack_timeout:` per node |
-| pre-spawn gate wait (executor slot, resources, ready deps): one shared budget per node in a `start()` wave, per gate in the single-node verbs | 100 ms | `slot_timeout:` |
+| pre-spawn gate wait (executor slot, resources, ready deps, a previous instance finishing): one shared budget per node in a `start()` wave, per gate in the single-node verbs | 100 ms | `slot_timeout:` |
 | control mailbox depth | 4 | fixed |
 | trace registries | 4 executors; graphs register onto a linked chain, any number | fixed |
 | fresh-spawn grace | a spawn counts as a beat | none needed |
@@ -71,8 +72,9 @@ arrives with the `defmt` feature.
   member count itself stays a literal (it determines how much is emitted).
 - **One compose site per binary**; **one set of trace hook symbols per
   binary** (the unnamed graph carries them).
-- `pool_size > 1` cannot combine with lend, `consume` or `divisible`
-  resources (one slot, one value or claimant).
+- **Restart budgets** (feature `restart-intensity`): `MAX` in 1..=65535,
+  `WINDOW_MS` at least 1; a window caps at `u32::MAX / 2` ticks (about
+  35 min at a 1 MHz tick).
 - **Veto gates** (feature `veto`): at most 32 writers per gate, one spelling
   per gate; the target must be a `VetoGate` with a slot per writer.
 - **Budgets** (feature `budget`): one slot per declaring node and pool
@@ -84,4 +86,7 @@ Bring-up faults from `run()` are typically escalated hard (a `panic!` into a
 hardware-watchdog reset): the graph is the product; if it cannot come up,
 nothing should run. Shutdown faults name a wedged task and are the more
 interesting case: retry, log and continue degraded, or reset, as the domain
-demands. The library's contract ends at returning the fault with provenance.
+demands. A `RestartStorm` from `run()` names a crash loop the restart
+policy refused to feed: the node is still running as it was, and
+deactivating it, degrading, or resetting is again the application's call.
+The library's contract ends at returning the fault with provenance.

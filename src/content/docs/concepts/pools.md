@@ -93,10 +93,11 @@ A `const` cannot read the member static array, hence the named constants.
 
 ## `cancel` pools
 
-A pool takes the `cancel` flag like a node, applying to the one shell
-all members share. That is what lets the policy retire a worker that would
-never have acked a stop: the member's future is dropped in place and its
-per-member resource restores to its own slot index, ready for the regrow.
+A pool takes the `cancel` flag like a node, applying to the one generated
+shell; each member is its own instance, restarted on regrow. That is what lets the policy
+retire a worker that would never have acked a stop: the member's future is
+dropped in place and its per-member resource restores to its own slot
+index, ready for the regrow.
 The load signal moves outside the worker: whatever hands it work calls
 `WORKERS[i].mark_busy()` / `mark_idle()`, since the worker holds no node.
 

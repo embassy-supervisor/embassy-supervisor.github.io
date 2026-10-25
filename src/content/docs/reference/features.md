@@ -25,7 +25,7 @@ feature, never a silent behavior change.
 | `budget` | | the `divisible` resource kind: a graph-sized `Budget<K>`, a `Claimant` per holder, allocator-side `rebalance` under a `BudgetPolicy` (`FairShare`, `ShrinkFastGrowSlow`), and a stopped holder's share released by the supervisor (missed ack included; a `Pause` park keeps it) |
 | `readiness` | | `set_ready` / `wait_ready` / `clear_ready` and the `ready` dep marker |
 | `liveness` | | per-node heartbeat: `beat()`, `ticks_since_beat()`, `is_stale()` |
-| `liveness-monitor` | | the sweep: `beat_timeout:` / `beat_window:`, `wait_health()`, `HealthEvent`. Report-only. Implies `liveness` |
+| `liveness-monitor` | | the sweep: `beat_timeout:` / `beat_window:`, `wait_health()`, `HealthEvent`; plus `GRAPH.all_fresh()` / `GRAPH.stale_nodes()`, the synchronous hardware-watchdog feed gate. Report-only. Implies `liveness` |
 | `epochs` | | per-node activation generation: `epoch()`, `wait_epoch_change(seen)` |
 | `coupling` | | declared dataflow: `reads:` / `writes:` and the signal-indexed queries; `Stamped<T>` for read-side write-freshness checks |
 | `coupling-observe` | `coupling` | the `observed` marker and its accessor; with `liveness-monitor`, `beat` drives the heartbeat and `ready_on_write` by polling |
@@ -35,6 +35,11 @@ feature, never a silent behavior change.
 | `data-deps` | `graph-ref` + `dataflow` | gated reads (`Backed`, the counted `Open` guard, `retire`, `producer_of`) and leases (`Leased`, `lease`, `drain`) |
 | `node-status` | | `report_status()` / `status()`: a one-line self-description per node |
 | `restart` | | `Supervisor::restart`: cycle a node and its transitive dependents, re-gated. Implies `control` |
+| `restart-intensity` | | the `restart_budget: MAX in WINDOW_MS` clause: `restart` refuses the MAX+1th restart of a node inside the window with `FaultKind::RestartStorm`, before stopping anything, and `apply_control` propagates it. Implies `restart` |
+| `enabled-if` | | the `enabled_if: fn() -> bool` clause: `start()` evaluates it for each down node and latches `disabled` on `false` (settings-gated bring-up) |
+| `lifecycle-events` | | `wait_lifecycle()` / `try_wait_lifecycle()`: a lossy 8-slot queue of `LifecycleEvent { node, kind }` for every driven transition, with a drop counter (`lifecycle_events_dropped()`) |
+| `lifecycle-sink` | | `set_lifecycle_sink(fn(LifecycleEvent))`: the same events, pushed synchronously to an app callback on the supervisor task; no queue, no drops. Combinable with `lifecycle-events` |
+| `breadcrumb` | | `node.crumb()` and the packed `crumb_word()` / `decode_crumb()`: the last lifecycle phase, per node and binary-wide, for postmortem stashing |
 | `bound-deps` | | the `bound` dep marker: `clear_ready()` stops a bound dependent. ⚠ the one feature that changes a documented contract. Implies `readiness` + `control` |
 | `heap-state` | | `state: Type = expr` / `state: zeroed Type`. ⚠ emits a ~6-line fallible-boxing `unsafe` helper into your crate; needs a `#[global_allocator]` |
 | `defmt` | | route the supervisor's logs through defmt |
@@ -49,7 +54,7 @@ feature, never a silent behavior change.
 A reasonable "most of the model" set for a connected device:
 
 ```toml
-embassy-supervisor = { version = "0.11", features = [
+embassy-supervisor = { version = "0.12", features = [
     "readiness", "liveness-monitor", "control", "pool",
     "coupling-observe", "dataflow", "defmt",
 ] }

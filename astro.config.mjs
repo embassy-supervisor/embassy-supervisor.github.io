@@ -2,6 +2,7 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
+import { unified } from '@astrojs/markdown-remark';
 import { rehypeTableScroll } from './src/plugins/rehype-table-scroll.mjs';
 import { sitemapAlias } from './src/plugins/sitemap-alias.mjs';
 
@@ -15,7 +16,7 @@ export default defineConfig({
   base: BASE,
   trailingSlash: 'ignore',
   markdown: {
-    rehypePlugins: [rehypeTableScroll],
+    processor: unified({ rehypePlugins: [rehypeTableScroll] }),
   },
   // mermaid is only ever reached through a dynamic import chain, so the dev
   // scanner can miss it; pinning it here keeps its optimized-deps URL valid

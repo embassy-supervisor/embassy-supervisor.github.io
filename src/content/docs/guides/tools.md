@@ -66,6 +66,10 @@ slots its spawn takes, the readiness it waits on, the slots a stop clears.
   accesses; signals carry their `veto` marker, resources their `divisible`
   and `serialized` kinds) for anything that is not a diagram.
 
+`enabled_if:` and `restart_budget:` show up as node facts in the diagrams
+(`if radio_on`, `restarts 3/60000ms`) and in the JSON model (`enabled_if` as
+the predicate's text, `restart_budget` as `{max, window_ms}`).
+
 Layout help on bigger graphs: `--layout elk`, `--max-fanout 6` to collapse a
 widely-read signal into one aggregate box, `--legend` for a key,
 `--executors` to box nodes by the executor they spawn through,

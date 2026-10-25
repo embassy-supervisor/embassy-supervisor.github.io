@@ -4,7 +4,7 @@
 // motion. One controller per page session; re-renders on theme flips and
 // view transitions.
 
-import type Mermaid from 'mermaid';
+import type { Mermaid } from 'mermaid';
 
 type Variant = 'dark' | 'light';
 

@@ -32,11 +32,12 @@ supervisor_graph! {
 - The spawn glue **fallibly** boxes the init value: an allocation failure is
   a `FaultKind::Spawn` fault, nothing spawned or stranded, retry when the
   heap frees up.
-- The shell lends the worker `&mut Type` (after resources, before extras).
-- The box **drops on task exit**, before restores and the completion record,
-  so `has_exited()` implies the heap is back. Every activation allocates
-  fresh: N respawns, net zero heap churn. On a pool, each member boxes its
-  own.
+- `Type` must be `Send`. The worker gets `&mut Type` (after resources,
+  before extras).
+- The box **drops when the worker returns**, before restores and the
+  completion record, so `has_exited()` implies the heap is back. Every
+  activation allocates fresh: N respawns, net zero heap churn. On a pool,
+  each member boxes its own.
 
 `state: zeroed Type` allocates zero-filled instead of building the value in
 the spawner's frame: no transient stack copy at any size or opt-level.
@@ -83,7 +84,25 @@ flowchart LR
 The default build allocates nothing, and none of the supervisor's own
 structures touch the heap: node state is static, orders and tables are
 flash constants, the mailbox is a fixed array. Enabling pools, control,
-health or dataflow does not change that.
+health, lifecycle events or dataflow does not change that.
+
+## Static costs, measured
+
+The opt-in mechanisms that do add RAM add it as statics, sized at compile
+time. Measured on the RP2350 demo firmware (thumbv8m, release build) from
+symbol sizes:
+
+| mechanism | static RAM | notes |
+|---|---|---|
+| cross-tier restarts | 64 B per `executor NAME;` | the demo's three executors take 192 B |
+| `task:` node | +8 B per node | over a plain embassy task of the same worker |
+| `lifecycle-events` | 132 B, plus your consumer task | the demo's consumer added 48 B |
+| `lifecycle-sink` | 4 B | |
+
+On the demo, moving from the queue and its consumer to the sink cut the
+feature's `.bss` from +380 B to +204 B and its flash by 424 B. Of the
+remaining 204 B, 4 B are the sink; the other 200 B are the firmware's own
+16-entry event ring.
 
 ## Next
 

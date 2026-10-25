@@ -32,7 +32,7 @@ supervisor can do is opt-in:
 
 ```toml [Cargo.toml]
 [dependencies]
-embassy-supervisor = "0.11"
+embassy-supervisor = "0.12"
 
 [features]
 # an example application feature that turns on supervisor capabilities
@@ -56,7 +56,8 @@ The full list with defaults is in the
 
 ## Logging backends
 
-The supervisor logs lifecycle events through an optional backend:
+The supervisor logs bring-up, transitions and faults through an optional
+backend:
 
 - `defmt` for on-target logging (the usual choice with embassy and RTT),
 - `log` for hosted or std consumers.

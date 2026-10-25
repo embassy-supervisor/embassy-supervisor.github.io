@@ -2300,6 +2300,15 @@ figure.graph .cluster rect {
   border-color: var(--sup-lime);
   font-variant-numeric: tabular-nums;
 }
+.chip-condition {
+  color: var(--sup-cyan);
+  border-color: var(--sup-cyan);
+}
+.chip-budget {
+  color: var(--sup-pink);
+  border-color: var(--sup-pink);
+  font-variant-numeric: tabular-nums;
+}
 
 /* A card carrying several chips stacks them so the name keeps its room;
    the title column puts the status on the second chip's line. */

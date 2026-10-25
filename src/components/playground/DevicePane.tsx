@@ -5,8 +5,17 @@ import { useEffect, useRef, useState } from 'react';
 import type { Snapshot } from '../../lib/playground/wasm';
 import type { ButtonAction, DeviceSpec } from './scenarios';
 
+/** One `enabled_if:` predicate and the nodes that declare it. */
+export interface StartCondition {
+  predicate: string;
+  nodes: string[];
+  on: boolean;
+}
+
 interface Props {
   devices: DeviceSpec[];
+  conditions: StartCondition[];
+  onCondition: (predicate: string, on: boolean) => void;
   snapshot: Snapshot | null;
   faults: string[];
   running: boolean;
@@ -254,8 +263,36 @@ function Lease({
   );
 }
 
+/** A start condition: read once, when the graph starts. Editable at any
+ * time; a change applies on the next run. */
+function Condition({ c, onCondition }: { c: StartCondition; onCondition: Props['onCondition'] }) {
+  const name = c.predicate.split('::').pop() ?? c.predicate;
+  return (
+    <div className="pg-device">
+      <span className="pg-device-label" title={c.predicate}>
+        {name}()
+      </span>
+      <button
+        role="switch"
+        aria-checked={c.on}
+        className={`pg-switch ${c.on ? 'on' : ''}`}
+        onClick={() => onCondition(c.predicate, !c.on)}
+      >
+        <span className="pg-switch-knob" />
+        <span className="pg-switch-text">{c.on ? 'true' : 'false'}</span>
+      </button>
+      <small>
+        start condition of {c.nodes.join(', ')}; read when the graph starts, so a change applies on the
+        next run
+      </small>
+    </div>
+  );
+}
+
 export default function DevicePane({
   devices,
+  conditions,
+  onCondition,
   snapshot,
   faults,
   running,
@@ -270,9 +307,12 @@ export default function DevicePane({
         <span>Virtual device</span>
       </div>
       <div className="pg-device-grid">
-        {devices.length === 0 && (
+        {devices.length === 0 && conditions.length === 0 && (
           <p className="pg-device-none">This scenario has no physical inputs; drive it from the graph.</p>
         )}
+        {conditions.map((c) => (
+          <Condition key={c.predicate} c={c} onCondition={onCondition} />
+        ))}
         {devices.map((d) => {
           switch (d.kind) {
             case 'switch':

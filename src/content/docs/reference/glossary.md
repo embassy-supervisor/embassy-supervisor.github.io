@@ -17,7 +17,8 @@ in the application.</dd>
 <dt>pool</dt>
 <dd>A declared set of single-instance workers scaled between
 <code>min</code> and <code>max</code> by a policy. Members share one worker
-shell; take-kind resources become per-member slot arrays.</dd>
+shell definition, each its own instance; take-kind resources
+become per-member slot arrays.</dd>
 
 <dt>floor</dt>
 <dd>The pool's member 0: always-on when <code>min >= 1</code>, the member a
@@ -111,6 +112,26 @@ serialized link, at no runtime cost.</dd>
 <dd>A per-node activation generation counter, for a running consumer to
 notice a provider restarted underneath it.</dd>
 
+<dt>lifecycle event</dt>
+<dd>Feature <code>lifecycle-events</code>: a <code>LifecycleEvent { node,
+kind }</code> posted for every transition a supervisor drives
+(<code>Started</code>, <code>Resumed</code>, <code>StopRequested</code>,
+<code>Stopped</code>, <code>Exited</code>, <code>Faulted</code>) into a
+lossy 8-slot queue read with <code>wait_lifecycle()</code>. A body that
+returns unasked is not evented.</dd>
+
+<dt>lifecycle sink</dt>
+<dd>Feature <code>lifecycle-sink</code>: an app <code>fn(LifecycleEvent)</code>
+installed with <code>set_lifecycle_sink</code> and called synchronously on
+the supervisor task at each of the same transitions. Nothing is dropped and
+a timestamp taken in it is exact; it must be short and non-blocking.</dd>
+
+<dt>breadcrumb</dt>
+<dd>Feature <code>breadcrumb</code>: the last phase a supervisor drove a
+node through (<code>node.crumb()</code>), and the binary-wide last
+transition packed into one <code>u32</code> (<code>crumb_word()</code>) for
+stashing across a reset and decoding at the next boot.</dd>
+
 <dt>parked</dt>
 <dd>Either a node declared with no worker (the app spawns it by hand), or a
 <code>Pause</code> instance stopped and waiting on
@@ -120,6 +141,19 @@ notice a provider restarted underneath it.</dd>
 <dd>The control latch: not started at boot (<code>disabled;</code>) or
 deactivated directly (<code>Deactivate</code> marks its target). Survives
 wake respawns and pool regrows until an <code>Activate</code> clears it.</dd>
+
+<dt>enabled_if</dt>
+<dd>Feature <code>enabled-if</code>: a node clause naming a
+<code>fn() -&gt; bool</code>. <code>start()</code> calls it for each node
+that is down, and <code>false</code> latches <code>disabled</code> as the
+marker would; <code>true</code> never clears a latch.</dd>
+
+<dt>restart budget / restart storm</dt>
+<dd>Feature <code>restart-intensity</code>: <code>restart_budget: MAX in
+WINDOW_MS</code> allows at most <code>MAX</code> explicit restarts of a
+node per window. The next one inside the window is refused with
+<code>FaultKind::RestartStorm</code> before anything is stopped, and the
+node keeps running as it was.</dd>
 
 <dt>collateral</dt>
 <dd>Shown as "held" in the playground: stopped only as a dependent of a

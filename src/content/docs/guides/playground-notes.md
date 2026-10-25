@@ -60,6 +60,14 @@ semantics as on hardware:
 - Fault injection: the ⚡ menu calls real fault verbs. Stall skips polls,
   crash drops the worker, and wedge swallows the stop ack. Hog is not
   offered because wasm's single thread would freeze alongside it.
+- `enabled_if:` start conditions: the predicate cannot run in the browser,
+  so each one becomes a switch under the virtual device (`true` by
+  default). The supervisor reads it when the graph starts, so flip it and
+  run again; a node whose condition is false stays disabled until you start
+  it from its card. The card shows the condition as an `if` chip.
+- `restart_budget:` runs as declared: restart a node past its budget inside
+  the window and the restart is refused as a restart storm, with the node
+  left running. The card shows the budget as a `↻` chip.
 
 ## What a task is in the playground
 

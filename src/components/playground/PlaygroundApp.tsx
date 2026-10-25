@@ -12,7 +12,7 @@ import { scenarios, type ButtonAction, type Scenario } from './scenarios';
 import { extractDecl } from './dslHighlight';
 import EditorPane from './EditorPane';
 import GraphPane from './GraphPane';
-import DevicePane from './DevicePane';
+import DevicePane, { type StartCondition } from './DevicePane';
 import LogPane from './LogPane';
 import TaskPane from './TaskPane';
 
@@ -48,6 +48,8 @@ export default function PlaygroundApp() {
   // `initial`, so they must remount or the first click would write the
   // value the simulation already holds.
   const [runGen, setRunGen] = useState(0);
+  // `enabled_if:` values by predicate text; a predicate never toggled is true.
+  const [conditionValues, setConditionValues] = useState<Record<string, boolean>>({});
 
   speedRef.current = speed;
 
@@ -208,6 +210,22 @@ export default function PlaygroundApp() {
     }
   }, [dsl, stopLoop]);
 
+  const conditions = useMemo<StartCondition[]>(() => {
+    const byPred = new Map<string, string[]>();
+    for (const n of parse?.model?.nodes ?? []) {
+      if (n.enabled_if) byPred.set(n.enabled_if, [...(byPred.get(n.enabled_if) ?? []), n.name]);
+    }
+    return [...byPred].map(([predicate, nodes]) => ({
+      predicate,
+      nodes,
+      on: conditionValues[predicate] ?? true,
+    }));
+  }, [parse, conditionValues]);
+
+  const onCondition = useCallback((predicate: string, on: boolean) => {
+    setConditionValues((v) => ({ ...v, [predicate]: on }));
+  }, []);
+
   const run = useCallback(async () => {
     stopLoop();
     setRebooted(false);
@@ -221,6 +239,8 @@ export default function PlaygroundApp() {
     try {
       const w = await freshInstance();
       wasmRef.current = w;
+      // Start conditions are read when the graph starts: set them first.
+      for (const [predicate, on] of Object.entries(conditionValues)) w.set_condition(predicate, on);
       const outcome = w.start_run(dsl, JSON.stringify(scenario.behaviors)) as ParseOutcome;
       setParse(outcome);
       if (!outcome.ok) {
@@ -243,7 +263,7 @@ export default function PlaygroundApp() {
       setError(String(e));
       setPhase('error');
     }
-  }, [dsl, scenario, startLoop, stopLoop]);
+  }, [dsl, scenario, conditionValues, startLoop, stopLoop]);
 
   useEffect(() => stopLoop, [stopLoop]);
 
@@ -274,6 +294,7 @@ export default function PlaygroundApp() {
       if (!s) return;
       setScenario(s);
       setDsl(s.dsl);
+      setConditionValues({});
       void reset();
     },
     [reset],
@@ -624,6 +645,8 @@ export default function PlaygroundApp() {
         <DevicePane
           key={runGen}
           devices={scenario.devices}
+          conditions={conditions}
+          onCondition={onCondition}
           snapshot={running ? snapshot : null}
           faults={faults}
           running={running}

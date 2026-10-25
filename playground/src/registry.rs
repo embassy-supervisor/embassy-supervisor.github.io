@@ -247,6 +247,42 @@ macro_rules! fn_tables {
 fn_tables!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
            24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47);
 
+/// Start-condition values the page set before the run, by predicate text.
+/// A predicate the page never set reads `true`, as if the clause were absent.
+static CONDITIONS: std::sync::Mutex<std::collections::BTreeMap<String, bool>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+pub fn set_condition(predicate: &str, value: bool) {
+    CONDITIONS
+        .lock()
+        .unwrap()
+        .insert(predicate.to_string(), value);
+}
+
+/// Node `i`'s `enabled_if:` predicate, as the supervisor calls it.
+fn condition(i: usize) -> bool {
+    let Some(pred) = nodes().get(i).and_then(|rt| rt.model.enabled_if.as_deref()) else {
+        return true;
+    };
+    CONDITIONS
+        .lock()
+        .unwrap()
+        .get(pred)
+        .copied()
+        .unwrap_or(true)
+}
+
+macro_rules! cond_tables {
+    ($($i:literal)*) => {
+        /// One start-condition fn per node slot, for `with_enabled_if`.
+        pub static CONDITION_FNS: [fn() -> bool; MAX_NODES] = [
+            $(|| condition($i)),*
+        ];
+    };
+}
+cond_tables!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+             24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47);
+
 fn observed_writes(j: usize) -> u32 {
     signals()
         .get(j)

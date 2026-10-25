@@ -1,6 +1,6 @@
 ---
 title: Lifecycle and modes
-description: What each supervisor operation does to a node, by mode, and how the stop and start waves work.
+description: What each supervisor operation does to a node, by mode, how the stop and start waves work, and the events and policies around them.
 ---
 
 <p class="eyebrow">Concepts</p>
@@ -12,7 +12,7 @@ and three cross-cutting flags cover everything.
 
 | mode | at boot | on teardown | on wake re-bring-up |
 |---|---|---|---|
-| `Terminate` | spawned | exits and acks | **respawned** fresh |
+| `Terminate` | spawned | exits and acks | **respawned** with a fresh body |
 | `Pause` | spawned (or app-spawned) | acks, then parks on `wait_resume()` | **resumed in place**, keeps held resources |
 | `OnDemand` | not started | stopped if running | left down; the pool policy regrows it |
 
@@ -31,10 +31,11 @@ stateDiagram-v2
 
 Three flags cut across the modes:
 
-- **`disabled`** (the `disabled;` clause, or a control `Deactivate` on the
-  node itself) is the "someone said stop" latch. Every bring-up path honors
-  it, so a manual stop survives a wake respawn or an elastic regrow, until
-  an `Activate` clears it.
+- **`disabled`** (the `disabled;` clause, an `enabled_if:` predicate that
+  returned false at `start()`, or a control `Deactivate` on the node
+  itself) is the "someone said stop" latch. Every bring-up path honors it,
+  so a manual stop survives a wake respawn or an elastic regrow, until an
+  `Activate` clears it.
 - **`collateral`** (`TaskNode::is_collateral()`) marks a node stopped only
   as a *dependent* of a deactivated node. It blocks bring-up exactly like
   `disabled`, but `activate` on the ancestor releases it once no disabled
@@ -110,6 +111,134 @@ spawns before its in-pass deps. In a `start()` wave a node's `slot_timeout`
 covers all its gates together, from the moment its dependencies resolve; the
 single-node verbs (`start_node`, and through them the cascades) budget per
 gate instead.
+
+## Restarting `task:` nodes
+
+A restart (`restart`, `respawn_terminate`, `activate`, `start_node`, pool
+growth) runs a `task:` node's worker again from scratch: a `Terminate` node
+comes back with fresh body state, its extras evaluated and its resources
+taken again. Nothing from the previous run carries over: its exit, ack and
+status are cleared before the new run starts.
+
+Restarts work the same whichever executor or core the node runs on and
+wherever the supervisor runs, including a supervisor on an interrupt
+executor restarting a thread-mode node. Hand-written `spawn:` tasks restart
+just as reliably as long as they acknowledge their stop as their last act;
+see [Restarts across tiers](/concepts/placement#restarts-across-tiers).
+
+For declarations, a `state:` type must be `Send`.
+
+## Lifecycle events
+
+Features `lifecycle-events` and `lifecycle-sink` report every transition a
+supervisor drives: the waves of `start`, `teardown`, `activate`,
+`deactivate`, `restart` and `respawn_terminate`, the single-node verbs, pool
+scaling and bound-dep cascades. Each transition is one
+`LifecycleEvent { node, kind }`:
+
+| `LifecycleKind` | when |
+|---|---|
+| `Started` | a fresh instance was started (an app-spawned node: marked running) |
+| `Resumed` | a parked `Pause` instance was resumed in place |
+| `StopRequested` | the node was signalled to stop |
+| `Stopped` | it acked without its body having returned: a parked `Pause` instance, a hand-written `ack_dropped()` |
+| `Exited` | it acked by its body returning (`mark_exited()`, which every `task:` shell calls) |
+| `Faulted(FaultKind)` | a lifecycle step failed: gate timeout, spawn failure, missed ack, refused restart |
+
+`LifecycleKind` is `#[non_exhaustive]`, so match it with a `_` arm;
+`kind.as_str()` gives a stable lower-case name (`"stop_requested"`) for logs
+and JSON.
+
+A worker that acknowledges its stop itself and then returns (the
+`run_cancellable_acked` idiom) can be reported as either `Stopped` or
+`Exited`. A worker that returns on its own, without being asked to stop,
+produces no event; `has_exited()` is how to read it.
+
+**The queue** (`lifecycle-events`): one consumer awaits the events.
+
+```rust
+loop {
+    let ev = embassy_supervisor::wait_lifecycle().await;
+    info!("{} {}", ev.node.name(), ev.kind.as_str());
+}
+```
+
+The queue holds 8 events and never makes the supervisor wait for you: while
+it is full, newer events are dropped and counted
+(`lifecycle_events_dropped()`), so a consumer that starts after a large
+bring-up sees its first events, not its last. `try_wait_lifecycle()` checks
+without awaiting.
+
+**The sink** (`lifecycle-sink`): the supervisor calls an app function
+instead.
+
+```rust
+fn record(ev: embassy_supervisor::LifecycleEvent) {
+    let now = embassy_time::Instant::now(); // the transition's own time
+    info!("{} {}", ev.node.name(), ev.kind.as_str());
+    // push (ev.node, ev.kind, now) into a ring
+}
+
+embassy_supervisor::set_lifecycle_sink(record); // before the first wave
+```
+
+Your function is called at the moment of each transition, in order, so
+nothing is dropped and a timestamp taken in it is exact. It runs inside the
+supervisor, so keep it short and non-blocking: a log line or a write into a
+ring buffer, never an await or a long lock. Install it before starting the
+graph; earlier events are not delivered.
+
+Choosing between them: the queue suits a consumer that wants to await or do
+real work per event, at the price of drops under bursts and timestamps taken
+whenever it gets to an event. The sink suits recording and logging: lossless,
+exact, and cheaper in RAM ([measured
+costs](/concepts/memory#static-costs-measured)), but your code runs inside
+the supervisor. Both features can be on;
+then every event reaches both. To learn which node a reset interrupted, use
+the [bring-up breadcrumb](/concepts/health#bring-up-breadcrumb).
+
+## Settings-gated bring-up
+
+Feature `enabled-if` decides `disabled` at runtime:
+
+```rust
+fn lora_on() -> bool { SETTINGS.lock(|s| s.lora) }
+
+supervisor_graph! {
+    node LORA = Terminate, task: lora_task, enabled_if: crate::lora_on;
+}
+```
+
+`Supervisor::start` calls the predicate (any expression coercing to
+`fn() -> bool`) once per call, before the wave, for each node that is down.
+`false` latches `disabled` exactly as the `disabled` clause would:
+dashboards see it, and `activate` and `start_node` still override it.
+`true` never clears a latch, so a manual `deactivate` survives a later
+`start()`. Running and detached nodes are not evaluated, and neither
+`respawn_terminate` nor the control verbs re-evaluate the predicate: when a
+setting changes at runtime, waking the node is the app's call (`activate`).
+
+## Restart intensity
+
+Feature `restart-intensity` (implies `restart`) bounds how often one node
+may be restarted, after OTP's restart intensity:
+
+```rust
+supervisor_graph! {
+    node NET = Terminate, task: net_task, restart_budget: 3 in 60000;
+}
+```
+
+At most `MAX` explicit `Supervisor::restart` calls targeting the node
+(directly or through `ControlOp::Restart`) per `WINDOW_MS` window. The next
+one inside the window returns `FaultKind::RestartStorm` before anything is
+stopped: the node keeps running as it was. Only the verb's target counts;
+dependents cycled with it, and `activate`, do not. The window opens at the
+first counted restart, and a restart after it closes opens a fresh window.
+Windows cap at `u32::MAX / 2` ticks (about 35 min at a 1 MHz tick); `MAX`
+and `WINDOW_MS` must both be at least 1. `apply_control` propagates the
+fault rather than absorbing it, so the `run` driver returns it (see
+[Runtime control](/concepts/control#restart-one-subtree-cycles)).
 
 ## Defaults, in one place
 

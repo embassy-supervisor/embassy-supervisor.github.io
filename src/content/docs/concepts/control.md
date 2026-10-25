@@ -119,17 +119,28 @@ loop {
 keeps its state and its task-pool slot). The disabled latch sticks: a
 manually stopped node is not revived by a restart above it.
 
+With feature `restart-intensity`, a node's
+`restart_budget: MAX in WINDOW_MS` clause bounds how often it can be the
+target: the restart past `MAX` inside the window returns
+`FaultKind::RestartStorm` before anything is stopped, and the node keeps
+running as it was. Dependents cycled with the target do not count against
+their own budgets ([Restart intensity](/concepts/lifecycle#restart-intensity)).
+
 A direct `restart` call returns startup faults as well as shutdown
 timeouts. The control Restart policy is different from Activate:
-`apply_control` propagates Restart's shutdown timeout but logs and absorbs
-its startup faults. That policy is unchanged.
+`apply_control` propagates Restart's shutdown timeout, and with
+`restart-intensity` its `RestartStorm` refusal, so the `run` driver returns
+them; it logs and absorbs Restart's startup faults.
 
 ## The split single-node verbs
 
 Use `start_node` / `stop_node` when you mean exactly one node and no cascade:
 pausing one service for a maintenance window, probing a respawn. `stop_node`
 on a `Pause` node is the single-node pause: it acks and parks, and
-`resume_node` thaws it in place, keeping held resources.
+`resume_node` thaws it in place, keeping held resources. `start_node`
+waits up to the node's `slot_timeout` for the previous instance to finish,
+as the bring-up waves do (see [Restarts across
+tiers](/concepts/placement#restarts-across-tiers)).
 
 ## What skips everything
 

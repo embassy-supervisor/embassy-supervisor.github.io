@@ -24,7 +24,7 @@ flowchart LR
     MAIN -- provide --> SLOT
     PROV -- provide --> SLOT
     SLOT -- "gate · slot_timeout" --> CONSUMER
-    CONSUMER -. "take &mut T at first poll<br/>restore on exit" .-> SLOT
+    CONSUMER -. "take &mut T per activation<br/>restore on exit" .-> SLOT
 ```
 
 ## The protocol
@@ -35,11 +35,12 @@ flowchart LR
 2. The supervisor probes the slot just before the (re)spawn. An unfilled slot
    fails bring-up with `FaultKind::ResourceMissing` after a bounded wait (the
    node's `slot_timeout`, 100 ms default), naming the node.
-3. The generated shell takes the value at its first poll (never through the
-   task-fn call, where a storage clash would drop it unrecoverably) and hands
-   the worker `&mut Type`, after the node argument, in declared order. After
-   the worker returns, the shell restores the value, so a respawn re-takes
-   the same instance.
+3. The generated shell takes the value at the start of each activation
+   (never through the task-fn call, where a storage clash would drop it
+   unrecoverably) and hands the worker `&mut Type`, after the node argument,
+   in declared order. A slot found empty at that point ends that run; the
+   node can still be restarted. After the worker returns, the value is
+   restored, so the next run re-takes the same instance.
 
 Who fills the slot? Either **`main`**, before `start()`, for anything that
 exists from boot, or a **provider node** for anything built at runtime.
@@ -101,8 +102,7 @@ Feature `budget`. Some values are not handed over but split: a site power
 budget shared by charging sessions, a bandwidth cap shared by radio links.
 `resources: [POWER: divisible]` emits one `pub static POWER: Budget<K>` with
 one slot per declaring node and pool member; the macro rejects a budget
-sized past 256 holders and any `pool_size > 1` entry (one claimant per
-slot).
+sized past 256 holders.
 
 Each holder's shell receives a `Claimant` bound to its own slot. It states
 a want, reads its grant, and waits for the grant to move:
@@ -194,9 +194,6 @@ readiness, or a gated read. The dataflow half of the story is
 ## Limits worth knowing
 
 - `resources:` requires `task:` (the generated shell does the take/restore).
-- `pool_size > 1` cannot combine with lend, `consume` or `divisible`
-  entries: one slot holds one value (a budget: one claimant). Use `shared`,
-  or a pool, whose members get per-member slot arrays.
 - A panic in the worker skips the restore (on embedded, a panic reboots).
 
 ## Next

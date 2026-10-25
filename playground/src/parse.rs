@@ -305,14 +305,6 @@ fn node_common_badges(n: &tm::NodeModel, item: &str, badges: &mut Vec<Badge>) {
             "adopted fns are shown and linted; only explicit reads:/writes: execute",
         );
     }
-    if n.pool_size.is_some() {
-        badge(
-            badges,
-            item,
-            "pool_size:",
-            "task pool sizing is fixed in the playground",
-        );
-    }
 }
 
 fn build_model(
@@ -425,6 +417,19 @@ fn build_model(
                     ready_on_write: n.ready_on_write.as_ref().is_some_and(|cfg| {
                         cfg_badge(badges, &name, "ready_on_write", cfg);
                         true
+                    }),
+                    enabled_if: n.enabled_if.as_ref().map(|e| {
+                        cfg_badge(badges, &name, "enabled_if:", &e.cfg);
+                        tight(&e.predicate.text)
+                    }),
+                    restart_budget: n.restart_budget.as_ref().and_then(|b| {
+                        cfg_badge(badges, &name, "restart_budget:", &b.cfg);
+                        let max = lit_u64(&b.max, &name, "restart_budget:", errors)?;
+                        let window_ms = lit_u64(&b.window_ms, &name, "restart_budget:", errors)?;
+                        Some(RestartBudget {
+                            max: max as u16,
+                            window_ms,
+                        })
                     }),
                     reads: signal_refs(&n.reads, &name, "reads:", badges),
                     writes: signal_refs(&n.writes, &name, "writes:", badges),
@@ -586,6 +591,8 @@ fn build_pool(
             beat_timeout_ms: None,
             beat_window: None,
             ready_on_write: false,
+            enabled_if: None,
+            restart_budget: None,
             reads: reads.clone(),
             writes: writes.clone(),
             pool: Some(name.clone()),

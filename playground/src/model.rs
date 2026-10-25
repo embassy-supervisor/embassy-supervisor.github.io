@@ -76,10 +76,20 @@ pub struct NodeModel {
     pub beat_timeout_ms: Option<u64>,
     pub beat_window: Option<u8>,
     pub ready_on_write: bool,
+    /// `enabled_if:` predicate text: the start condition the page toggles.
+    pub enabled_if: Option<String>,
+    /// `restart_budget: MAX in WINDOW_MS`.
+    pub restart_budget: Option<RestartBudget>,
     pub reads: Vec<SignalRef>,
     pub writes: Vec<SignalRef>,
     /// Set when this node is a pool member: the pool's name.
     pub pool: Option<String>,
+}
+
+#[derive(Serialize, Clone, Copy)]
+pub struct RestartBudget {
+    pub max: u16,
+    pub window_ms: u64,
 }
 
 #[derive(Serialize, Clone)]

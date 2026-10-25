@@ -39,7 +39,9 @@ supervisor_graph! {
         , discover                      //   bind tables derived from code
         , dataflow: [crate::setter]     //   adopt an accessor's tables
         , beat_timeout: MS, ready_on_write
-        , pool_size: N, executor: NAME
+        , enabled_if: crate::lora_on    //   fn() -> bool; false latches disabled
+        , restart_budget: MAX in MS     //   restart() refuses MAX+1 in the window
+        , executor: NAME
         , slot_timeout: MS, ack_timeout: MS, disabled;
 
     pool NAME = [Mode, ..],             // one mode per member, floor first
@@ -83,10 +85,12 @@ supervisor_graph! {
 
 `task:` also admits generic workers, which embassy task fns normally reject:
 one worker, one node per concrete instantiation, each monomorphized into its
-own shell. Arguments in the partial call are evaluated **inside the shell at
-the task's first poll**, on the node's own executor: good for building
+own shell (restarts: see
+[Restarting `task:` nodes](/concepts/lifecycle/#restarting-task-nodes)).
+Arguments in the partial call are evaluated **inside the shell at the start
+of each activation**, on the node's own executor: good for building
 resources where they run, wrong for values that must be snapshotted at spawn
-time. An argument that might not exist yet at first poll does not belong
+time. An argument that might not exist yet at that point does not belong
 here; that is what `resources:` is for.
 
 `spawn:` names a hand-written `#[embassy_executor::task]` fn. It is the right
@@ -177,17 +181,47 @@ constants `WORKERS_MIN` / `WORKERS_MAX` / `WORKERS_MEMBERS` exist for
 const-context sizing, for example deriving a socket budget from the worker
 budget. See [Elastic pools](/concepts/pools/).
 
+## `enabled_if:` and `restart_budget:`
+
+Two node-only clauses attach runtime policy to a node:
+
+```rust
+fn lora_on() -> bool { SETTINGS.lock(|s| s.lora) }
+
+supervisor_graph! {
+    node LORA = Terminate, task: lora_task, enabled_if: crate::lora_on;
+    node NET  = Terminate, task: net_task, restart_budget: 3 in 60000;
+}
+```
+
+`enabled_if:` (feature `enabled-if`) is `disabled` decided at runtime. It
+takes any expression coercing to `fn() -> bool`; `start()` calls it once per
+call for each node that is down, and `false` latches `disabled` exactly as
+the marker would. `true` never clears a latch. See
+[Settings-gated bring-up](/concepts/lifecycle/#settings-gated-bring-up).
+
+`restart_budget: MAX in WINDOW_MS` (feature `restart-intensity`, which
+implies `restart`) allows at most `MAX` explicit restarts of the node per
+window; the next one inside the window fails with `FaultKind::RestartStorm`
+before anything is stopped. See
+[Restart intensity](/concepts/lifecycle/#restart-intensity).
+
 ## Feature gates
 
 Constructs behind Cargo features (`ready`, `bound`, `observed`, `veto`,
-`divisible`, `serialized`, `local`, `state:`, `beat_timeout:`) always
-**parse**; whether your build permits them is policy applied afterwards.
-Using one without its feature is a compile error that names the feature.
+`divisible`, `serialized`, `local`, `state:`, `beat_timeout:`,
+`enabled_if:`, `restart_budget:`) always **parse**; whether your build
+permits them is policy applied afterwards. Using one without its feature is
+a compile error that names the feature.
 
 ## `#[cfg(...)]`
 
-Allowed on any node or pool, on individual deps, and on individual resource
-entries (gate the worker's matching parameter with the same attribute). A
+Allowed on any node or pool, on individual deps, on individual resource
+entries (gate the worker's matching parameter with the same attribute), and
+on a node's value-level clauses: the timeouts, `beat_window:`,
+`ready_on_write`, `disabled`, `discover`, `enabled_if:` and
+`restart_budget:`. A gated `enabled_if:` or `restart_budget:` in a build
+without its feature is a compile error only where its `#[cfg]` holds. A
 node compiled out keeps its slot as `None` and is skipped everywhere.
 
 ## What the compiler checks
@@ -196,18 +230,22 @@ Anything structurally wrong is an error with a span on the offending token:
 
 - unknown dependency, duplicate dependency, duplicate node or pool name
 - unknown `executor:` name; `executor:` combined with a closure spawn
-- `task:` and `spawn:` together; a closure under `task:`; `pool_size:`
-  without `task:`; `resources:` without `task:`
+- `task:` and `spawn:` together; a closure under `task:`; `resources:`
+  without `task:`
 - empty or duplicate resource names; contradictory kind markers; a `shared`
   slot redeclared with a different shape
-- `local` without the `local-resources` feature; `local` with `executor:`
+- `local` without the `local-resources` feature; a `local` slot declared on
+  two executors
 - `divisible` mixed with another kind or given a type, or used without the
-  `budget` feature; `divisible` on a `pool_size > 1` entry
+  `budget` feature
 - `veto` on a `reads:` entry, without the `veto` feature, on a gate with too
   few slots, with more than 32 writers, or with one gate spelled two ways
 - `serialized` without `shared`, or with holders spread over several
   executors
 - `slot_timeout: 0` or `ack_timeout: 0`; `cancel` without `task:`; `cancel` with `Pause`
+- a repeated clause; `enabled_if:` or `restart_budget:` without its feature;
+  a `restart_budget:` with no `in`, a `MAX` outside 1..=65535, or a
+  `WINDOW_MS` of 0
 - pool bounds violations; a `pool` without the `pool` feature
 - more than 256 slots (all graph indices are `u8`)
 - a dependency cycle, caught by the const topological sort

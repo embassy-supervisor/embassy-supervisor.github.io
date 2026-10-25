@@ -62,10 +62,22 @@ flowchart LR
   honors: respawn, park with held state, or scale on demand. Bring-up order
   is derived from `deps:` and enforced by the runtime.
 
+- **Settings-gated bring-up.** `enabled_if:` lets a runtime predicate, such
+  as a stored setting, keep a node down at `start()` exactly as `disabled`
+  would.
+
 - **Runtime coupling and resilience.** `bound` edges stop dependents with
   their provider and restart them together. `restart` re-gates a subtree
   through its full sequence. Generation counters let consumers detect
   provider restarts without polling.
+
+- **Bounded restart loops.** `restart_budget:` caps explicit restarts of a
+  node per time window. One more inside the window fails with
+  `RestartStorm` before anything stops, so a crash loop surfaces instead of
+  cycling.
+
+- **Restarts across executor tiers.** A supervisor on an interrupt executor
+  or another core restarts tasks on any tier, with nothing to configure.
 
 - **Resource safety and sharing.** `Backed` signals start their producer on
   first demand. `lease()` and `drain()` count active readers so a resource
@@ -76,8 +88,9 @@ flowchart LR
 
 - **Health and fault containment.** Per-node heartbeat budgets, stall
   detection, and status reporting give the system a single source of truth
-  about liveness without modifying producer code. Dataflow declarations make
-  affected nodes explicit.
+  about liveness without modifying producer code, and the same policing
+  gates a hardware-watchdog feed. Dataflow declarations make affected nodes
+  explicit.
 
 - **Elastic scaling.** Pools grow under load and shrink after a cooldown,
   bounded by a `min:`/`max:` member budget declared in the graph.
@@ -89,6 +102,10 @@ flowchart LR
 - **Observable execution.** Per-task poll counts, CPU share, and
   per-executor tracing attribute behavior to node names. The same traces
   drive both the playground and on-target tooling.
+
+- **Lifecycle records.** Every transition the supervisor drives can reach
+  the app as an event, through a lossy queue or a synchronous callback, and
+  a packed breadcrumb names the node and phase a reset interrupted.
 
 - **Composable and modular.** Split declarations with
   `supervisor_fragment!` and compose them with `compose_graph!`. Only the

@@ -248,7 +248,7 @@ fn claim_new(rt: &'static NodeRt) -> bool {
     for s in &rt.reads {
         let w = s.writes.load(Ordering::Relaxed);
         if s.claims
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |c| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |c| {
                 (c < w).then_some(c + 1)
             })
             .is_ok()

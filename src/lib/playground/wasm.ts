@@ -31,6 +31,7 @@ export interface Wasm {
   set_input(node: string, value: number): void;
   inject(nodeIdx: number, kind: string): void;
   signal_command(signalIdx: number, cmd: string): void;
+  set_condition(predicate: string, value: boolean): void;
 }
 
 let compiled: Promise<WebAssembly.Module> | null = null;
@@ -87,6 +88,10 @@ export interface NodeModel {
   /** The executor was inherited from `default executor`, not written on the node. */
   executor_defaulted: boolean;
   beat_timeout_ms: number | null;
+  /** `enabled_if:` predicate text: the node's start condition. */
+  enabled_if: string | null;
+  /** `restart_budget: MAX in WINDOW_MS`. */
+  restart_budget: { max: number; window_ms: number } | null;
   reads: { name: string; observed: boolean; beat: boolean; veto: boolean }[];
   writes: { name: string; observed: boolean; beat: boolean; veto: boolean }[];
   pool: string | null;

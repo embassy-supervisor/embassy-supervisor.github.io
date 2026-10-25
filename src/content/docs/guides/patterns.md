@@ -211,7 +211,7 @@ supervisor_graph! {
 ```
 
 Each declaration stamps its own monomorphized shell; the args evaluate at
-first poll, on the node's own executor.
+the start of each activation, on the node's own executor.
 
 *Run it: every playground pool member and the **Robot cell controller**'s three servos share one worker body.*
 

@@ -152,7 +152,15 @@ type SupData = {
   executorDefaulted: boolean;
   /** Has a `task:`, so it runs inside the crate's shell (stall, crash). */
   task: boolean;
+  /** `enabled_if:` predicate text. */
+  enabledIf: string | null;
+  restartBudget: { max: number; window_ms: number } | null;
 };
+
+/** The last path segment of a predicate: `crate::settings::radio_on` reads `radio_on`. */
+function predicateName(p: string): string {
+  return p.split('::').pop() ?? p;
+}
 
 /**
  * The ⚡ menu: the crate's `fault-inject` verbs, done to the task by its
@@ -218,6 +226,22 @@ function SupNode({ data }: NodeProps<Node<SupData>>) {
         </div>
         <span className="pg-node-chips">
           <span className={`chip chip-${data.mode}`}>{data.mode}</span>
+          {data.enabledIf && (
+            <span
+              className="chip chip-condition"
+              title={`starts only if ${data.enabledIf}() is true when the graph starts; toggle it under Start conditions`}
+            >
+              if {predicateName(data.enabledIf)}
+            </span>
+          )}
+          {data.restartBudget && (
+            <span
+              className="chip chip-budget"
+              title={`at most ${data.restartBudget.max} restarts per ${data.restartBudget.window_ms} ms; one more is refused as a restart storm`}
+            >
+              ↻≤{data.restartBudget.max}/{data.restartBudget.window_ms / 1000}s
+            </span>
+          )}
           {snap?.grant != null && (
             <span className="chip chip-grant" title="budget share: granted / wanted units">
               {snap.grant}/{snap.want}
@@ -630,6 +654,8 @@ function buildNodes(model: GraphModel, layout: Layout): Node[] {
           executor: m.executor,
           executorDefaulted: m.executor_defaulted,
           task: m.task !== null,
+          enabledIf: m.enabled_if,
+          restartBudget: m.restart_budget,
         } satisfies SupData,
       };
     }

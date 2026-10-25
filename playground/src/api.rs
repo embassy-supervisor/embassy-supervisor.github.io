@@ -21,6 +21,14 @@ fn js_err(e: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&e.to_string())
 }
 
+/// Set a start condition (`enabled_if:` predicate, by its text) for the next
+/// run. Call before `start_run`; the supervisor reads it when the graph
+/// starts.
+#[wasm_bindgen]
+pub fn set_condition(predicate: &str, value: bool) {
+    registry::set_condition(predicate, value);
+}
+
 /// Parse DSL text: the real syntax-crate parser plus the playground's badge,
 /// signal and cycle analysis. Pure; safe to call on every editor debounce.
 #[wasm_bindgen]

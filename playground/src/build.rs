@@ -389,6 +389,12 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
         if m.ready_on_write {
             cfg = cfg.with_ready_on_write();
         }
+        if m.enabled_if.is_some() {
+            cfg = cfg.with_enabled_if(registry::CONDITION_FNS[i]);
+        }
+        if let Some(b) = m.restart_budget {
+            cfg = cfg.with_restart_budget(b.max, Duration::from_millis(b.window_ms));
+        }
         if let Some(ex) = &m.executor {
             let slot = executor_slots
                 .get(ex.as_str())
