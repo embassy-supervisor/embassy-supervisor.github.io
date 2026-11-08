@@ -46,7 +46,12 @@ Workers report load with `mark_busy()` and `mark_idle()`. A real transition
 fires the scale signal itself; no manual `request_scale()` needed. The
 supervisor's `run_pools` future wakes on each scale request (it never polls),
 asks each pool's `ScalingPolicy` for a decision, and starts or stops one
-member accordingly.
+member accordingly. It is built on `pool_pass`: one pass that applies every
+pool's action to completion and returns the earliest instant a pool wants
+re-evaluating, for a driver loop of your own that waits on `wait_scale()`
+and that instant beside its other wake sources. A bare
+`select(run_pools, wait_control)` drops a pass mid-action when a command
+arrives; `pool_pass` returns between actions.
 
 The built-in `DeferredShrink` policy grows immediately when saturated (no
 idle member, below `max`) and shrinks only after an idle surplus has

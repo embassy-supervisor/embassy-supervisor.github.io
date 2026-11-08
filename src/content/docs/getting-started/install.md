@@ -32,7 +32,7 @@ supervisor can do is opt-in:
 
 ```toml [Cargo.toml]
 [dependencies]
-embassy-supervisor = "0.12"
+embassy-supervisor = "0.13"
 
 [features]
 # an example application feature that turns on supervisor capabilities

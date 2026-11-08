@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize};
 use embassy_supervisor::{
     Backed, Budget, Claimant, Coupling, CouplingPoint, DeferredShrink, Divisible, ElasticPool,
     Graph, GraphRef, Leased, Mode, NodeCfg, Observer, Pool, ResourceGate, ResourceSlot,
-    SpawnerSlot, Supervisor, TaskNode, Topology, VetoGate, shape,
+    SpawnerSlot, Supervisor, TaskHandle, TaskNode, Topology, VetoGate, shape,
 };
 use embassy_time::Duration;
 
@@ -527,8 +527,9 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
             }
         }
 
-        let cfg: &'static NodeCfg = leak(cfg);
-        let node: &'static TaskNode = leak(TaskNode::new(cfg, m.disabled));
+        let cfg: &'static NodeCfg = leak(cfg.with_disabled_at_boot(m.disabled));
+        let handle: &'static TaskHandle = leak(TaskHandle::new());
+        let node: &'static TaskNode = leak(TaskNode::new(cfg, handle));
         // SAFETY: single-threaded build phase; nothing reads the slot array
         // until the executor starts.
         unsafe {
@@ -705,51 +706,13 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
     Ok(BUILT.get().unwrap())
 }
 
-/// Drive the built supervisor forever: bring-up with the liveness monitor
-/// running *alongside* it (`run()` only starts the monitor after `start()`
-/// completes, so a `ready` dep on a `ready_on_write` node would deadlock a
-/// cold boot — the crate's own tests use this same composition), then the
-/// driver loop composed from the crate's public pieces: pools, the control
-/// queue, bound-dep binds, the monitor. Not `run()`: that begins with its
-/// own `start()`, and a second bring-up wave retries every bound-parked
-/// node with a full `slot_timeout` budget before the first queued command
-/// is served, so a demand-start requested during boot landed seconds late.
+/// Drive the built supervisor until a fault: `run()` brings the graph up with
+/// the liveness monitor alongside, then applies pool, control and bound-dep
+/// wakes one at a time.
 pub async fn drive_supervisor(
     spawner: &embassy_executor::Spawner,
 ) -> embassy_supervisor::NodeFault {
-    use embassy_futures::select::{Either, Either3, select, select3};
-    use embassy_supervisor::{wait_bind, wait_control};
-
-    let sup = built().expect("build first").sup;
-    match select(sup.start(spawner), sup.monitor()).await {
-        Either::First(Ok(())) => {}
-        Either::First(Err(fault)) => return fault,
-        Either::Second(never) => match never {},
-    }
-    let driver = async {
-        loop {
-            match select(sup.run_pools(spawner), wait_control()).await {
-                Either::First(fault) => return fault,
-                Either::Second(cmd) => {
-                    if let Err(fault) = sup.apply_control(cmd, spawner).await {
-                        return fault;
-                    }
-                }
-            }
-        }
-    };
-    let binds = async {
-        loop {
-            wait_bind().await;
-            if let Err(fault) = sup.apply_bind(spawner).await {
-                return fault;
-            }
-        }
-    };
-    match select3(driver, binds, sup.monitor()).await {
-        Either3::First(fault) | Either3::Second(fault) => fault,
-        Either3::Third(never) => match never {},
-    }
+    built().expect("build first").sup.run(spawner).await
 }
 
 fn resolve_behavior(

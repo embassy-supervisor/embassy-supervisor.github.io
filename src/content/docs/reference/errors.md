@@ -36,7 +36,7 @@ arrives with the `defmt` feature.
 | `ResourceMissing` | a `resources:` slot, or an unprovided `divisible` budget, unfilled at the deadline | same |
 | `ReadyDepTimeout { dep }` | a `ready` dep that never asserted | same |
 | `Spawn(SpawnError)` | the spawn was refused: a full task pool, a refused `state:` allocation (`heap-state`), or the previous instance of the node still running when its `slot_timeout` ran out (a `spawn:` task that keeps awaiting after its ack) | same |
-| `ShutdownTimeout` | a node that missed the shutdown-ack deadline (its divisible shares are released either way) | `stop_node`, `teardown`, `apply_control`, `run_pools` (a wedged shrink) |
+| `ShutdownTimeout` | a node that missed the shutdown-ack deadline (its divisible shares are released either way) | `stop_node`, `teardown`, `apply_control`, `run_pools` and `pool_pass` (a wedged shrink) |
 | `RestartStorm` (feature `restart-intensity`) | a `restart` refused because the node already used its `restart_budget:` inside the current window; nothing was stopped and the node keeps running as it was | `restart`, `apply_control` (`Restart` propagates it rather than absorbing it) |
 
 ## The other three
@@ -73,8 +73,10 @@ arrives with the `defmt` feature.
 - **One compose site per binary**; **one set of trace hook symbols per
   binary** (the unnamed graph carries them).
 - **Restart budgets** (feature `restart-intensity`): `MAX` in 1..=65535,
-  `WINDOW_MS` at least 1; a window caps at `u32::MAX / 2` ticks (about
-  35 min at a 1 MHz tick).
+  `WINDOW_MS` at least 1.
+- **Heartbeat budgets** (feature `liveness-monitor`): a `beat_timeout:` at or
+  past `u32::MAX / 2` ticks (about 35.8 min at a 1 MHz tick) is refused at
+  compile time.
 - **Veto gates** (feature `veto`): at most 32 writers per gate, one spelling
   per gate; the target must be a `VetoGate` with a slot per writer.
 - **Budgets** (feature `budget`): one slot per declaring node and pool

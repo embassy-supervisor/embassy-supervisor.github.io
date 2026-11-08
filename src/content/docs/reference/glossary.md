@@ -14,6 +14,12 @@ description: The vocabulary of embassy-supervisor in one page.
 emits one <code>pub static NAME: TaskNode</code> per node, usable anywhere
 in the application.</dd>
 
+<dt>TaskHandle</dt>
+<dd>The live half of a node: its atomic flags and signals, all zero at rest,
+one <code>.bss</code> static per node and per pool member. The
+<code>NodeCfg</code> and the <code>TaskNode</code> that pairs the two are
+flash constants.</dd>
+
 <dt>pool</dt>
 <dd>A declared set of single-instance workers scaled between
 <code>min</code> and <code>max</code> by a policy. Members share one worker

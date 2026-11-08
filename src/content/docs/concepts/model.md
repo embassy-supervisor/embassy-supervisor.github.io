@@ -12,26 +12,32 @@ macro emits the first two; you construct the third.
 
 ```mermaid
 flowchart LR
-    accDescr: TaskNodes and NodeCfgs form the Graph the Supervisor drives
+    accDescr: NodeCfg, TaskHandle and TaskNode form the Graph the Supervisor drives
     CFG["NodeCfg<br/>name · mode · gates<br/>flash-resident constants"]:::signal
-    NODE["TaskNode<br/>atomic state: running · ready<br/>heartbeat · readiness"]:::task
+    HANDLE["TaskHandle<br/>running · ready · beats<br/>atomics in .bss"]:::task
+    NODE["TaskNode<br/>two pointers, in flash"]:::task
     GRAPH["GRAPH<br/>nodes + topo order + pools"]:::provider
     SUP["Supervisor<br/>start · stop · control"]:::pool
 
-    CFG -. carried by .-> NODE
+    CFG -. paired by .-> NODE
+    HANDLE -. paired by .-> NODE
     NODE --> GRAPH
     GRAPH --> SUP
 ```
 
 ## TaskNode
 
-One per managed task, split in two so RAM stays small: a **`TaskNode`**
-handle holding the mutable half (running, shutdown requested, ready,
-heartbeat, exit record, packed into one atomic word where possible), and a
-reference to its **`NodeCfg`**, the immutable half: name, mode, spawn glue,
-gate list, budgets and coupling tables. The cfg is a flash-resident static
-emitted beside the node, so the constant data costs no RAM. The split and
-packing keep per-node state small even with tracing on.
+One per managed task, three statics so RAM stays small. The **`NodeCfg`** is
+the immutable half: name, mode, spawn glue, gate list, budgets, coupling
+tables and the `disabled` boot marker, a flash constant. The
+**`TaskHandle`** is the live half: running, shutdown requested, ready,
+heartbeat, exit record, packed into atomic words and all zero at rest, so it
+lives in `.bss`. The **`TaskNode`** pairs the two and is itself two pointers
+in flash. The macro emits all three per node; a hand-built node is
+`static CFG: NodeCfg`, `static H: TaskHandle = TaskHandle::new()` and
+`static N: TaskNode = TaskNode::new(&CFG, &H)`, with
+`NodeCfg::with_disabled_at_boot(true)` for a node that starts disabled. The
+split keeps per-node RAM to the atomics even with tracing on.
 
 Application code reads the node through methods: `name()`, `mode()`,
 `is_running()`, `is_ready()`, `is_stale(..)` and friends. Task code also

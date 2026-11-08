@@ -165,9 +165,9 @@ checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-supervisor"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e226fb6468d903f9680cfe2bc9f9c504462f2d7d570827327a88d559865ce19"
+checksum = "10d27c130d42dd993e311242464896dc9d4f0b4fed427751d0892b1d8a6dfdb3"
 dependencies = [
  "embassy-executor",
  "embassy-futures",
@@ -182,9 +182,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-macros"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4026ca5a42bbfbe77b6ba0d18ad410af71afe4b458199e5978fefeddc4f22cb8"
+checksum = "a5865c555bc8a64c9a7bb7597c6b8045b9afd4b7a385895a39b3332ac30de47f"
 dependencies = [
  "embassy-supervisor-syntax",
  "proc-macro2",
@@ -194,9 +194,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-observe"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb9685a56bdb160e802e4d7be2b551cb31521cabab3b3d60301f7e4e83f30be3"
+checksum = "f0c9a63d24ad424d8527a631f6f4aa81e6a620bd32a710ab5bb4bf75fda20307"
 dependencies = [
  "portable-atomic",
 ]
@@ -226,9 +226,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-syntax"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "983f1b5f4be749e9507f54b2045d33e566422e8905c12306fe52ef61c15fc2e5"
+checksum = "95e36ff7253c4e7205274b895c88462b5c24417d2b3f4dfa18f40af1926cde6f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -237,9 +237,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-tools"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bda39b5ee9cf3333b9b5f72649b7f3297bcb087798254872230e8ee76d31a0e1"
+checksum = "6b2313186487cafb77040b5db251fea9148bcf7b9d6ce3eaeb4af029d97b3a68"
 dependencies = [
  "embassy-supervisor-syntax",
  "flate2",

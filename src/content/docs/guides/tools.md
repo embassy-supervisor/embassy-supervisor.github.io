@@ -98,7 +98,8 @@ $ cd firmware && supervisor-lint
 $ supervisor-lint --only dead-writes --allow RATE_PID_TERMS src/
 ```
 
-Every finding exits non-zero: this is a CI gate, not a report. A one-sided
+Findings exit 1 and a failed run (a bad option, an unreadable input, no
+graph) exits 2: this is a CI gate, not a report. A one-sided
 signal is often a real, accepted absence (an input this target has no
 producer for, a telemetry tap nothing consumes yet), so `--allow` names the
 accepted ones in the invocation, where it gets reviewed like code. An

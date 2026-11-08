@@ -44,7 +44,9 @@ pub fn parse(src: &str) -> ParseOutcome {
     let (resolved, resolve_warnings) = resolve(decls);
 
     let mut discovered = Vec::new();
-    scan_source(src, FILE, &mut discovered);
+    if let Ok(file) = syn::parse_file(src) {
+        scan_source(&file, FILE, &mut discovered);
+    }
     let mut lints = dataflow_lints(&resolved, &discovered, &[], &LintCats::all(), &[]);
     lints.extend(resolve_warnings);
 

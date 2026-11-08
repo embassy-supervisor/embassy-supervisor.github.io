@@ -243,11 +243,15 @@ Anything structurally wrong is an error with a span on the offending token:
 - `serialized` without `shared`, or with holders spread over several
   executors
 - `slot_timeout: 0` or `ack_timeout: 0`; `cancel` without `task:`; `cancel` with `Pause`
-- a repeated clause; `enabled_if:` or `restart_budget:` without its feature;
-  a `restart_budget:` with no `in`, a `MAX` outside 1..=65535, or a
-  `WINDOW_MS` of 0
+- a repeated clause, a second `exit:` or `provides:`; `enabled_if:` or
+  `restart_budget:` without its feature; a `restart_budget:` with no `in`, a
+  `MAX` outside 1..=65535, or a `WINDOW_MS` of 0
 - pool bounds violations; a `pool` without the `pool` feature
 - more than 256 slots (all graph indices are `u8`)
+- an empty `resources: []`; a suffixed integer literal (`500u32`) in a
+  clause; an attribute other than `#[cfg]` on a list entry; two list entries
+  with no separator between them
+- a `beat_timeout:` at or past `u32::MAX / 2` ticks
 - a dependency cycle, caught by the const topological sort
 
 The generated surface at the call site is: one `pub static` per node, the

@@ -234,9 +234,9 @@ At most `MAX` explicit `Supervisor::restart` calls targeting the node
 one inside the window returns `FaultKind::RestartStorm` before anything is
 stopped: the node keeps running as it was. Only the verb's target counts;
 dependents cycled with it, and `activate`, do not. The window opens at the
-first counted restart, and a restart after it closes opens a fresh window.
-Windows cap at `u32::MAX / 2` ticks (about 35 min at a 1 MHz tick); `MAX`
-and `WINDOW_MS` must both be at least 1. `apply_control` propagates the
+first counted restart, and a restart after it closes opens a fresh window,
+however long ago the last one opened; `MAX` and `WINDOW_MS` must both be at
+least 1. `apply_control` propagates the
 fault rather than absorbing it, so the `run` driver returns it (see
 [Runtime control](/concepts/control#restart-one-subtree-cycles)).
 

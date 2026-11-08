@@ -88,7 +88,10 @@ through the health monitor, and what to do about that is your call.
 Two honest caveats:
 
 - Polling watches only the signal the declaration names, at the sweep's
-  resolution. That is the price of asking nothing of the task.
+  resolution. That is the price of asking nothing of the task. A node that
+  has yet to assert `ready_on_write` is probed at an eighth of its budget,
+  at most every 12.5 ms during its first 100 ms, then only at the eighth,
+  so a node that never writes cannot hold every sweep at 12.5 ms.
 - A queue's `len()` is **not** a change token: a channel that fills and
   drains between sweeps reads identical and looks silent. Wrap it in the
   facade's `Counted`, whose token is the write count, before pairing

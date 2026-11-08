@@ -95,7 +95,7 @@ symbol sizes:
 | mechanism | static RAM | notes |
 |---|---|---|
 | cross-tier restarts | 64 B per `executor NAME;` | the demo's three executors take 192 B |
-| `task:` node | +8 B per node | over a plain embassy task of the same worker |
+| `task:` node | 112 B per node, the `TaskHandle` | the `NodeCfg` (104 B) and the `TaskNode` (8 B) are flash constants; a pool holds one handle array, one entry per member |
 | `lifecycle-events` | 132 B, plus your consumer task | the demo's consumer added 48 B |
 | `lifecycle-sink` | 4 B | |
 
