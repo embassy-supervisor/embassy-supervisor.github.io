@@ -3,12 +3,6 @@
 version = 4
 
 [[package]]
-name = "adler2"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -63,15 +57,6 @@ checksum = "5b9ab7e0ca1d179628fa0172b2b97203c7fa0cd81be2448bd446fb9559ca9261"
 dependencies = [
  "loom",
  "tracing",
-]
-
-[[package]]
-name = "crc32fast"
-version = "1.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8498c871161e1742aaa9d52551b2d6ebdd4c3d45a3be423e3728f33b955be550"
-dependencies = [
- "cfg-if",
 ]
 
 [[package]]
@@ -165,9 +150,9 @@ checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-supervisor"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10d27c130d42dd993e311242464896dc9d4f0b4fed427751d0892b1d8a6dfdb3"
+checksum = "ed675e7b6fc6d25eb9644a326a4912682ee1a663f883d2d17a04e5b2306d9b10"
 dependencies = [
  "embassy-executor",
  "embassy-futures",
@@ -182,9 +167,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-macros"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5865c555bc8a64c9a7bb7597c6b8045b9afd4b7a385895a39b3332ac30de47f"
+checksum = "32e09298cd0ff3bcbabb3a6a155b78f436fbfabbd61058b2a9599eaa46ccb81f"
 dependencies = [
  "embassy-supervisor-syntax",
  "proc-macro2",
@@ -194,9 +179,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-observe"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0c9a63d24ad424d8527a631f6f4aa81e6a620bd32a710ab5bb4bf75fda20307"
+checksum = "c1c33a28dab45839634554c32b061502e6b8e07c70c27759cafcef72da2abab0"
 dependencies = [
  "portable-atomic",
 ]
@@ -226,9 +211,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-syntax"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95e36ff7253c4e7205274b895c88462b5c24417d2b3f4dfa18f40af1926cde6f"
+checksum = "0a5c39e00d188ff94a78514a13f479adbaf5299e676f792c5fd460061e66ace1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -237,15 +222,13 @@ dependencies = [
 
 [[package]]
 name = "embassy-supervisor-tools"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b2313186487cafb77040b5db251fea9148bcf7b9d6ce3eaeb4af029d97b3a68"
+checksum = "b48d06d147a537db0126d9f0586d9f15ae2ed302c0426b1e45b4bb859fe47048"
 dependencies = [
  "embassy-supervisor-syntax",
- "flate2",
  "proc-macro2",
  "quote",
- "serde_json",
  "syn 3.0.4",
 ]
 
@@ -344,17 +327,6 @@ name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
-
-[[package]]
-name = "flate2"
-version = "1.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e634e2e0ebac1ee034020da1ca582e17ffe4e0f5e985823721e168928136dcb"
-dependencies = [
- "crc32fast",
- "miniz_oxide",
- "zlib-rs",
-]
 
 [[package]]
 name = "fnv"
@@ -502,16 +474,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "miniz_oxide"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
-dependencies = [
- "adler2",
- "simd-adler32",
-]
-
-[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -552,9 +514,6 @@ name = "portable-atomic"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85"
-dependencies = [
- "critical-section",
-]
 
 [[package]]
 name = "proc-macro2"
@@ -671,12 +630,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "simd-adler32"
-version = "0.3.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 
 [[package]]
 name = "slab"
@@ -880,12 +833,6 @@ checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
 ]
-
-[[package]]
-name = "zlib-rs"
-version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34b31d188d9d685a4f9c7b46d6e36631b07058d2cfe190267adce54dc230bf12"
 
 [[package]]
 name = "zmij"

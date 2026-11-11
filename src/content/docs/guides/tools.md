@@ -16,6 +16,11 @@ by construction.
 cargo install embassy-supervisor-tools
 ```
 
+As a library with `default-features = false`, the crate works from source
+text alone. It parses, models, renders and lints. Its default `cli` feature
+adds the two binaries, input gathering, output writing and the JSON model.
+It also adds their `flate2` and `serde_json` dependencies.
+
 ## supervisor-mermaid
 
 Run it from the crate whose graph you want drawn:
@@ -26,13 +31,28 @@ $ cd firmware && supervisor-mermaid
 
 No arguments means "this crate". Point it at things explicitly when the
 graph spans files or crates (a compose site plus its fragments, or the files
-holding the `#[dataflow]` fns a `discover` node binds; `--deps` adds the
-workspace's path dependencies):
+holding the `#[dataflow]` fns a `discover` node binds). `--deps` adds the
+workspace packages the current one reaches through `path` dependencies. It
+reads them with `cargo metadata --no-deps`. From a virtual manifest's
+directory, it adds every member:
 
 ```console
 $ supervisor-mermaid src/main.rs src/tasks.rs
 $ supervisor-mermaid --deps src/main.rs
 ```
+
+Inputs follow these rules:
+
+- A directory is walked recursively for `*.rs`. The walk skips hidden
+  directories, symlinks, and a `target` directory that carries Cargo's
+  `CACHEDIR.TAG`.
+- An unreadable directory is reported.
+- A file that does not parse is reported, not skipped. `--check` and
+  `supervisor-lint` fail on it.
+- An option takes its value as the next argument, or inline as
+  `--opt=value`. A next argument that looks like an option is an error, so
+  write a value that starts with `-` inline. A lone `-` (stdin) is the
+  exception.
 
 ### The three diagrams
 
@@ -53,18 +73,41 @@ life*: a state diagram with only the transitions the declaration implies.
 With `--signals`, one composite per node, carrying the concrete gates: the
 slots its spawn takes, the readiness it waits on, the slots a stop clears.
 
+A `#[cfg]`-gated item draws like any other. Its predicate appears in its
+label or on its edge. This covers a node, a dep, a signal entry, a
+`discover` clause, a `dataflow:` entry and a `#[dataflow]` call site.
+`--hide-cfg` omits those markers. A `#[cfg]` on the `supervisor_graph!`
+invocation itself puts its predicate in the diagram title. Fragments of one
+name may be declared under different `#[cfg]` sets. The tool splices them
+all, and gates each item by its fragment's predicates.
+
 ### Getting the output somewhere useful
 
 - `--live-url`: a mermaid.live share link, nothing to install.
-- `--html FILE`: one self-rendering page (mermaid.js from a CDN).
+- `--html FILE`: one self-rendering page. It loads pinned releases of
+  mermaid and `@mermaid-js/layout-elk` from a CDN. It loads ELK only for a
+  diagram that asks for it.
 - `--render FILE`: svg/png/pdf through `mmdc`.
 - `--update FILE.md`: rewrites the managed block between
   `<!-- supervisor-mermaid:start/end -->` markers in a markdown file, and
-  touches nothing else. With `--watch`, the file follows the source as you
-  edit. This is how a README keeps a current picture of its graph.
-- `--json`: the graph model (nodes, deps, resources, signals, scanned
-  accesses; signals carry their `veto` marker, resources their `divisible`
-  and `serialized` kinds) for anything that is not a diagram.
+  touches nothing else.
+  - An unchanged file is left alone.
+  - A write goes through a temporary file and a rename. It keeps the
+    file's CRLF line endings.
+  - Markers inside fenced code blocks are ignored.
+  - A second start marker after the managed block is an error.
+
+  With `--watch`, the file follows the source as you edit. The inputs are
+  gathered again every cycle, so a new file or `mod` is picked up. This is
+  how a README keeps a current picture of its graph.
+- `--json`: the graph model, for anything that is not a diagram. It holds
+  nodes, deps, resources, signals and scanned accesses. Signals carry their
+  `veto` marker, and resources their `divisible` and `serialized` kinds.
+  Each node and pool carries its `fragment`, and each graph its `cfg`
+  array. The top level holds `"schema": 1`.
+- `--links 'vscode://file/{file}:{line}:1'`: each node box links to its
+  declaration. `{file}` is its absolute path and `{line}` its source line.
+  Pair it with `--html` and open the page in an external browser.
 
 `enabled_if:` and `restart_budget:` show up as node facts in the diagrams
 (`if radio_on`, `restarts 3/60000ms`) and in the JSON model (`enabled_if` as
@@ -98,12 +141,14 @@ $ cd firmware && supervisor-lint
 $ supervisor-lint --only dead-writes --allow RATE_PID_TERMS src/
 ```
 
-Findings exit 1 and a failed run (a bad option, an unreadable input, no
-graph) exits 2: this is a CI gate, not a report. A one-sided
+Findings exit 1. An input file that does not parse also exits 1. A failed
+run (a bad option, an unreadable input, no graph) exits 2. This is a CI
+gate, not a report. A one-sided
 signal is often a real, accepted absence (an input this target has no
 producer for, a telemetry tap nothing consumes yet), so `--allow` names the
 accepted ones in the invocation, where it gets reviewed like code. An
-`--allow` entry that no longer suppresses anything is itself reported.
+`--allow` entry that suppresses nothing is itself reported. This happens
+whenever `--only` keeps a signal category.
 
 `public-gate` is the third finding: a `Backed`, `Leased` or `VetoGate`
 static that is not private. Gates guard the access path, not the data; the

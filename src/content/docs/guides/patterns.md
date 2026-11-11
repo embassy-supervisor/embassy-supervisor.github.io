@@ -45,6 +45,10 @@ Why it holds together:
 
 - The provider's worker builds once, `provide()`s into the four slots, then
   parks on `wait_shutdown()`. `provides:` ties the slots to its lifetime.
+  All four slots are `local`, so each `provide` is an `unsafe` call. Its
+  `SAFETY` comment names the executor that every declaration of the slot
+  runs on. The call is `unsafe { STACK.provide(stack) }`, made inside the
+  worker that the graph spawns there.
 - The two runners are `local consume`: they are `!Send`, they live on the
   executor that built them, and they are dropped at teardown so the pins and
   DMA come back.

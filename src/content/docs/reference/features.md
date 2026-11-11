@@ -13,14 +13,20 @@ that runs every iteration whether or not a graph uses it. `restart` and
 `bound-deps` enable `control` on their own, so you rarely name it directly.
 
 Using a gated construct without its feature is a compile error naming the
-feature, never a silent behavior change.
+feature, never a silent behavior change. A construct may sit under a
+`#[cfg]` on its item, entry or clause. Then it errors only where that cfg
+holds.
+
+The crate depends on `portable-atomic` with `require-cas`. On a target
+without atomic compare-and-swap, enable `portable-atomic/critical-section`
+or `portable-atomic/unsafe-assume-single-core` in the application.
 
 | feature | default | adds |
 |---|:---:|---|
 | `macros` | ✓ | the `supervisor_graph!` declaration macro |
 | `control` | | runtime control plane: `ControlOp`, `request_control`, `try_request_control`, `apply_control`; `Deactivate` holds dependents under the `collateral` flag until `Activate` releases them |
 | `pool` | | elastic pools: `ElasticPool`, `run_pools`, `pool_pass` (one pools pass, for a hand-written driver loop), `GRAPH.pools` |
-| `local-resources` | | the `local` resource kind. ⚠ opts into the macro emitting a documented `unsafe impl Sync` (one-executor contract, checked per slot) |
+| `local-resources` | | the `local` resource kind. ⚠ opts into the macro emitting a documented `unsafe impl Sync`. The contract is one executor, checked per slot, and the provider must be a node the graph spawns. The slot's `provide`, `take`, `restore`, `get` and `clear` are `unsafe fn`s. `is_filled` is safe |
 | `fault-inject` | | `TaskNode::inject(Fault::{Stall, Wedge, Crash, Hog(..)})`, `clear_fault()`, `fault()`: faults done to a task, not asked of its worker. A bench, test and demo feature |
 | `budget` | | the `divisible` resource kind: a graph-sized `Budget<K>`, a `Claimant` per holder, allocator-side `rebalance` under a `BudgetPolicy` (`FairShare`, `ShrinkFastGrowSlow`), and a stopped holder's share released by the supervisor (missed ack included; a `Pause` park keeps it) |
 | `readiness` | | `set_ready` / `wait_ready` / `clear_ready` and the `ready` dep marker |
@@ -54,7 +60,7 @@ feature, never a silent behavior change.
 A reasonable "most of the model" set for a connected device:
 
 ```toml
-embassy-supervisor = { version = "0.13", features = [
+embassy-supervisor = { version = "0.14", features = [
     "readiness", "liveness-monitor", "control", "pool",
     "coupling-observe", "dataflow", "defmt",
 ] }

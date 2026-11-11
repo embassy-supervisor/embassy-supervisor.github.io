@@ -58,7 +58,9 @@ each one for testing.</dd>
 through a <code>ResourceSlot</code> at spawn. Kinds: lend (default),
 <code>consume</code>, <code>shared</code>, <code>divisible</code> (feature
 <code>budget</code>), with <code>local</code> composing onto the value
-kinds for <code>!Send</code> values.</dd>
+kinds for <code>!Send</code> values. A <code>local</code> slot's
+accessors are <code>unsafe fn</code>s, called only on the slot's executor;
+<code>is_filled()</code> stays safe.</dd>
 
 <dt>gate</dt>
 <dd>Something a spawn waits on, bounded by the node's
@@ -177,6 +179,13 @@ hold (deps up + gates satisfied) or whose stopping dependents have all
 acked, and repeat. Independent branches move concurrently; providers keep
 serving through their dependents' cleanup.</dd>
 
+<dt>run()</dt>
+<dd>The driver: a best-effort boot wave, then control commands and pool
+scaling. It logs a bring-up or <code>Activate</code> fault and reports it as
+<code>LifecycleKind::Faulted</code>. The node stays down and enabled until
+the next <code>Activate</code>. <code>run()</code> returns only on a
+<code>ShutdownTimeout</code> or a <code>RestartStorm</code>.</dd>
+
 <dt>ack</dt>
 <dd>The task-side half of a stop: <code>ack_dropped()</code> (or the
 combinator doing it). Missed after its window (2 s default, <code>ack_timeout:</code> per node):
@@ -190,6 +199,8 @@ a <code>ShutdownTimeout</code> fault naming the node.</dd>
 <dt>graph</dt>
 <dd>The macro-emitted bundle: node slots, dependency table, compile-time
 order, pools. One <code>pub static GRAPH</code> (or a named variant) drives
-one <code>Supervisor</code>.</dd>
+one <code>Supervisor</code>. A hand-built one is
+<code>Graph::new(&NODES, topo)</code> plus <code>with_pools</code> /
+<code>with_graph_ref</code>.</dd>
 
 </dl>

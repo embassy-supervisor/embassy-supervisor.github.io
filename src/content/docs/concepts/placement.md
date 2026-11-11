@@ -57,6 +57,8 @@ their own arguments.
 
 Resources the worker touches on that tier must stay tier-local. `local`
 slots are verified: every consumer and provider resolves to one executor.
+The provider must also be a node the graph spawns. Calls from your own code
+(`provide` from `main`, for example) are `unsafe` and carry that contract.
 Values reached through accessors are not verified; see the hazards below.
 
 ## The second core
@@ -85,6 +87,19 @@ cross-core sound (atomics and critical-section primitives): teardown awaits
 acks from the other core, control starts and stops remote nodes, and with
 tracing on, the other core's executor shows up as its own line. Register the
 one-line `trace::set_core_id_fn` to keep nested accounting exact per core.
+
+Core 1's own executor works best as an `InterruptExecutor` that sleeps in
+`WFI`. The demo firmware runs it on `SWI_IRQ_2` at P3. A thread executor
+sleeps in `WFE`. Every `SEV` that core 0's thread pender issues wakes both
+cores. So a thread executor on core 1 makes one empty pass per core-0 wake.
+`WFI` ignores events. The price is the cross-core relay described under the
+hazards below.
+
+The crate pulls `portable-atomic` with `require-cas`. On a target without
+atomic compare-and-swap, the application enables
+`portable-atomic/critical-section` or
+`portable-atomic/unsafe-assume-single-core`. A dual-core part needs the
+first one.
 
 Explicit non-goals: task migration and work stealing. Most HAL futures are
 not `Send` across cores, so each node lives where the graph puts it. If you
@@ -124,7 +139,7 @@ async fn app_supervisor() {
     let spawner = unsafe { Spawner::for_current_executor() }.await;
     let sup = Supervisor::new(&GRAPH);
     loop {
-        let fault = sup.run(&spawner).await;   // returns on ShutdownTimeout
+        let fault = sup.run(&spawner).await;   // ShutdownTimeout or RestartStorm only
         error!("supervisor: {}", fault);       // report; run() re-enters idempotently
     }
 }

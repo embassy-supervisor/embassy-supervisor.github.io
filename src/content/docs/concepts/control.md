@@ -37,8 +37,10 @@ pool-aware. Mailbox depth is 4.
 
 Acceptance into the mailbox is not execution success: `request_control`
 waits for queue capacity, and `try_request_control` reports only a full
-queue. Startup faults from an Activate command are returned by
-`apply_control` and propagate through the supervisor driver to its caller.
+queue. The driver in `Supervisor::run` logs a failed `Activate`. It reports
+it as a `Faulted` lifecycle event and keeps serving the mailbox. The node
+stays down and enabled until the next `Activate` retries it. `run` also logs
+and drops a command for a node outside its own graph.
 
 The verbs that live directly on `Supervisor` when you do hold it:
 `start_node`, `stop_node`, `resume_node` (single node, no cascade), and the
@@ -94,9 +96,9 @@ Handle the result with `.await?` or explicit error handling:
 sup.activate(&UPLOAD, &spawner).await?;
 ```
 
-The same activation result is returned by `apply_control` for
-`ControlOp::Activate`, so the driver can return the fault rather than
-silently accepting a failed activation.
+Called directly, `apply_control` returns the same activation result for
+`ControlOp::Activate`. The driver in `run` absorbs it, as described above.
+So activation faults reach the app through the log or a lifecycle consumer.
 
 ## `restart`: one subtree cycles
 
@@ -115,9 +117,13 @@ loop {
 }
 ```
 
-`Pause` nodes in the subtree are resumed, never respawned (their parked task
-keeps its state and its task-pool slot). The disabled latch sticks: a
-manually stopped node is not revived by a restart above it.
+Every node that was running when the restart began comes back, whatever
+its latch or mode. So a `disabled` node started by hand comes back, and so
+does a running `OnDemand` member. A member that was down comes up only when
+it is enabled, not `collateral` and not `OnDemand`. A manually stopped node
+is therefore not revived by a restart above it. `Pause` nodes in the subtree
+are resumed in place once their `ready` deps assert. They are never
+respawned: the parked task keeps its state and its task-pool slot.
 
 With feature `restart-intensity`, a node's
 `restart_budget: MAX in WINDOW_MS` clause bounds how often it can be the

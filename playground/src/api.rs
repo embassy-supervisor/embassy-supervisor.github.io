@@ -134,10 +134,11 @@ async fn power_task(idx: usize, spawner: Spawner) {
 
 #[embassy_executor::task]
 async fn supervise(spawner: Spawner) {
+    // The lifecycle sink already reported the fault `run()` returns (a missed
+    // shutdown ack or a refused restart); re-entering retries every enabled
+    // node that is down.
     loop {
-        let fault = build::drive_supervisor(&spawner).await;
-        events::push_fault(&fault);
-        log::error!("supervisor faulted: {fault}");
+        let _ = build::drive_supervisor(&spawner).await;
     }
 }
 

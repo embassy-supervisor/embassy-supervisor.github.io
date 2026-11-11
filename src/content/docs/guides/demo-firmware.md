@@ -39,7 +39,9 @@ The firmware's graph is composed from module-owned fragments (the network
 module declares its slice, the HTTP module its own), assembled by one
 `compose_graph!` site. Four executors: the supervisor runs on its own
 `InterruptExecutor` (P1), the heartbeat on a second one (P2), core 1 runs the
-bench, and everything else lands in thread mode through
+bench on a third (`SWI_IRQ_2`, P3) and sleeps in `WFI` between polls. A
+doorbell relays the supervisor's wakes for its tasks from core 0. Everything
+else lands in thread mode through
 `default executor THREAD;`. A node's placement is one field in the
 declaration, or nothing at all.
 

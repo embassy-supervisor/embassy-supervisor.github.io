@@ -81,8 +81,13 @@ it is opt-in behind the `local-resources` feature. Every access to the slot
 value must happen on the same executor. The macro enforces this for every
 consumer `resources:` and provider `provides:` declaration, including the
 graph's `default executor`. Any executor qualifies, including a second core;
-mismatches are compile errors. The macro cannot check the app side, so any
-`provide()` from `main` must also run on that executor. The typical pattern
+mismatches are compile errors. The provider must be a node the graph spawns
+(`task:` or a path-form `spawn:`). A parked node or a `spawn:` closure runs
+wherever the application put it. Its tier cannot be checked, so the macro
+rejects it. The macro cannot check the app side either. That is why the
+slot's `provide`, `take`, `restore`, `get` and `clear` are `unsafe fn`s. A
+call from `main` or from a provider's body must run on that executor, and
+its `SAFETY` comment says so. `is_filled()` stays safe. The typical pattern
 is `shared local`: a single slot of `!Send` handles used on the executor
 that created them.
 
@@ -93,7 +98,9 @@ supervisor_graph! {
 }
 
 // bring-up, and again before every wake respawn, before the node comes up:
-RUNNER.provide(build_radio_runner().await);
+let runner = build_radio_runner().await;
+// SAFETY: called on the slot's executor, the one RADIO runs on.
+unsafe { RUNNER.provide(runner) };
 ```
 
 ## `divisible`: one quantity, many holders
@@ -128,7 +135,7 @@ fixed steps). An unprovided budget fails bring-up as `ResourceMissing`,
 like any slot. The release rule is the point: a stopped holder never
 strands its share. Every stop path releases the holder's slot, including a
 holder that misses its shutdown ack; only a `Pause` park keeps the claim,
-because the parked task is coming back. The budget costs about `28 + 16*K`
+because the parked task is coming back. The budget costs about `16 + 16*K`
 bytes of static RAM for `K` holders; per node the graph adds one claims
 slice pointer to the flash config, claimant or not.
 

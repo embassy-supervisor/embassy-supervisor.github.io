@@ -44,9 +44,10 @@ flowchart LR
 
 Workers report load with `mark_busy()` and `mark_idle()`. A real transition
 fires the scale signal itself; no manual `request_scale()` needed. The
-supervisor's `run_pools` future wakes on each scale request (it never polls),
-asks each pool's `ScalingPolicy` for a decision, and starts or stops one
-member accordingly. It is built on `pool_pass`: one pass that applies every
+supervisor's `run_pools` future wakes on each scale request and never
+polls. A member that exits on its own also raises a scale request. On each
+wake, `run_pools` asks each pool's `ScalingPolicy` for a decision and starts
+or stops one member. It is built on `pool_pass`: one pass that applies every
 pool's action to completion and returns the earliest instant a pool wants
 re-evaluating, for a driver loop of your own that waits on `wait_scale()`
 and that instant beside its other wake sources. A bare
@@ -54,10 +55,11 @@ and that instant beside its other wake sources. A bare
 arrives; `pool_pass` returns between actions.
 
 The built-in `DeferredShrink` policy grows immediately when saturated (no
-idle member, below `max`) and shrinks only after an idle surplus has
-persisted for the configured cooldown, with one idle spare as the stable
-dead-band so a single spare never flaps. Your own policy is one sync,
-allocation-free fn: implement `ScalingPolicy`.
+idle member) or below `min`, as long as the pool is below `max`. So a pool
+whose `min` exceeds its boot members reaches `min` without load. It shrinks
+only after an idle surplus has persisted for the configured cooldown, with
+one idle spare as the stable dead-band so a single spare never flaps. Your
+own policy is one sync, allocation-free fn: implement `ScalingPolicy`.
 
 Two safety rails: a member is never grown while one of its declared
 dependencies is down (or, with `readiness`, while a `ready`-marked dep is

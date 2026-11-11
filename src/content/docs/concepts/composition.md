@@ -34,19 +34,30 @@ embassy_supervisor::compose_graph! {
 
 A fragment emits a relay macro that forwards its items, verbatim with their
 spans, into the compose site's single expansion. Every compile-time pass
-still sees the whole graph: cross-fragment deps resolve by name in either
-direction, duplicate names and shared-slot shape mismatches error with the
-owning fragment named, and the topological order and the 256-node cap span
-everything. All statics land at the compose site.
+still sees the whole graph:
+
+- Cross-fragment deps resolve by name in either direction.
+- Duplicate names and shared-slot shape mismatches are errors. The error
+  names the declaring item and, when it came from one, its fragment.
+- The topological order and the 256-node cap span everything.
+
+All statics land at the compose site.
 
 Rules worth knowing:
 
 - A fragment references its own items with plain `crate::…` paths; the macro
   normalizes them so they resolve to the fragment's crate at any compose
   site. Another crate's items take a fully-qualified `::crate_name::…`.
+- A resource or a veto gate may be declared both in a fragment and at the
+  compose site. Then name it through an imported bare identifier in both
+  places (`use crate::net::STACK;`, then `STACK`). Inside a fragment a
+  `crate::` path is carried as `$crate::`, which does not compare equal to
+  the same path written at the compose site.
 - `#[cfg(...)]` inside a fragment is evaluated against the **composing
   crate's** features. A fragment crate wanting feature-dependent shapes
   exports differently-named fragment variants instead.
+- A fragment body cannot set `name:` or an `observe` default. Both apply to
+  the whole graph, so they belong to the composing graph.
 - One compose site per binary: it emits the graph statics and, under
   `trace-hooks`, the hook symbols.
 
@@ -72,8 +83,11 @@ always-on primary graph and a cycled secondary coexist:
   trace hook symbols. Named graphs still link into the trace recorder chain
   when they start.
 - The control mailbox and pool scale signal are **shared**: run one driver
-  loop and apply each command to every supervisor in turn; a command naming
-  a node outside a supervisor's graph is a safe no-op.
+  loop and apply each command to every supervisor in turn. For
+  `apply_control`, a command naming a node outside a supervisor's graph is
+  a safe no-op. A single `run()` serves only its own graph. It logs and
+  drops a command for a foreign node. So use it as the one driver only when
+  no other graph is commanded, scaled or bound.
 - Node and resource statics keep their declared names in both graphs, so
   reuse of a name in one module is an ordinary duplicate-static error. The
   256-node cap is per graph.
@@ -102,11 +116,17 @@ sub.teardown().await?;                       // UPLOAD -> NET -> WIFI
 ```
 
 `start()` is the universal quiescent-to-running op, so mixed-mode sub-graphs
-cycle correctly: nodes reset per cycle, running and detached ones are
-skipped, a `Pause` instance parked by the previous teardown is resumed in
-place rather than double-spawned, and `consume` slots turn "rebuild the
-radio each entry" into fail-closed freshness. `teardown()` awaits every ack,
-so re-entering a state cannot race the previous instances.
+cycle correctly:
+
+- Nodes reset per cycle.
+- Running and detached nodes are skipped.
+- A `Pause` instance parked by the previous teardown waits for its `ready`
+  deps. Then it is resumed in place, never double-spawned.
+- `consume` slots turn "rebuild the radio each entry" into fail-closed
+  freshness.
+
+`teardown()` awaits every ack, so re-entering a state cannot race the
+previous instances.
 
 **The one-graph variant**: declare the subtree `Terminate` + `disabled` in
 the main graph and drive it with cascades (`activate` on the leaf, or

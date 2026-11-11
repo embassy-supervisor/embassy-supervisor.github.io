@@ -29,20 +29,26 @@ flowchart LR
 
 One per managed task, three statics so RAM stays small. The **`NodeCfg`** is
 the immutable half: name, mode, spawn glue, gate list, budgets, coupling
-tables and the `disabled` boot marker, a flash constant. The
+tables and the `disabled` boot marker, a flash constant. Its fields are
+private. `const` builders set them, and you read them through the node.
+Timeouts are stored as `u32` milliseconds, and the heartbeat budget as `u32`
+ticks. So the struct has no 8-byte field and aligns to 4. The
 **`TaskHandle`** is the live half: running, shutdown requested, ready,
 heartbeat, exit record, packed into atomic words and all zero at rest, so it
-lives in `.bss`. The **`TaskNode`** pairs the two and is itself two pointers
-in flash. The macro emits all three per node; a hand-built node is
-`static CFG: NodeCfg`, `static H: TaskHandle = TaskHandle::new()` and
+lives in `.bss`. A stop's ack is announced on one shared stop event. So the
+handle needs no ack signal of its own. The **`TaskNode`** pairs the two and
+is itself two pointers in flash. The macro emits all three per node. A
+hand-built node is
+`static CFG: NodeCfg = NodeCfg::new("n", Mode::Terminate, None)`,
+`static H: TaskHandle = TaskHandle::new()` and
 `static N: TaskNode = TaskNode::new(&CFG, &H)`, with
 `NodeCfg::with_disabled_at_boot(true)` for a node that starts disabled. The
 split keeps per-node RAM to the atomics even with tracing on.
 
 Application code reads the node through methods: `name()`, `mode()`,
-`is_running()`, `is_ready()`, `is_stale(..)` and friends. Task code also
-*writes* it: `beat()`, `set_ready()`, the shutdown combinators. The full
-task-side protocol is on
+`slot_timeout()`, `is_running()`, `is_ready()`, `is_stale(..)` and friends.
+Task code also *writes* it: `beat()`, `set_ready()`, the shutdown
+combinators. The full task-side protocol is on
 [Writing supervised tasks](/concepts/tasks/).
 
 ## Graph
@@ -59,6 +65,11 @@ task-side protocol is on
   edges or pools. Every lifecycle branch serving a structure the graph
   lacks is compiled out rather than branched over at runtime, so a lean
   graph ships lean code.
+- `pools` (feature `pool`) and `graph_ref` (feature `graph-ref`).
+
+The fields are public for reading. `Graph` is `#[non_exhaustive]`, so a
+hand-built graph is `Graph::new(&NODES, topo)`, followed by
+`.with_pools(..)` and `.with_graph_ref(..)` where those features are on.
 
 You can walk it directly: `GRAPH.iter_nodes()`, `GRAPH.deps_of(i)`,
 `GRAPH.dependents_of(i, ..)`, `GRAPH.order()`. Status endpoints and monitors
@@ -72,7 +83,7 @@ own, in three tiers of verbs:
 
 | tier | verbs | notes |
 |---|---|---|
-| whole graph | `start`, `run`, `teardown`, `teardown_continue`, `respawn_terminate`, `resume_pausable` | `run` = `start` + drive pools/control forever |
+| whole graph | `start`, `run`, `teardown`, `teardown_continue`, `respawn_terminate`, `resume_pausable` | `run` = best-effort `start` + drive pools/control; returns only on a missed shutdown ack or a refused restart |
 | single node | `start_node`, `stop_node`, `resume_node` | no cascade |
 | subsystem | `activate`, `deactivate`, `apply_control`, `restart` | dependency cascades |
 
@@ -97,15 +108,16 @@ atomics: a host test's main thread reads them as safely as another task.
 `Aborted` is the cancellation result of the cancellable combinators,
 `Resumed` the pause-cycle result of `run_pausable`, and `ControlQueueFull`
 is what the synchronous control call returns when the mailbox is full.
-Those four types cover the whole crate's error surface.
+Those four types cover the whole crate's error surface; each implements
+`Display` and `core::error::Error`.
 
 ## What the supervisor never does
 
 It never runs task code: tasks are spawned onto whatever executor the
 declaration routes them to. It never allocates. It never owns a HAL. And it
 never decides policy for you: what to do about a stale task, a failed
-bring-up or a missed shutdown ack is returned as data, and the application
-escalates.
+bring-up or a missed shutdown ack is returned or reported as data, and the
+application escalates.
 
 ## Next
 

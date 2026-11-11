@@ -27,17 +27,25 @@ and each prints something you can act on:
 att-estimator: ready-dep imu-reader did not assert within 2000ms
 ```
 
-`Debug` is derived (`.unwrap()` / `.expect()` work), and `defmt::Format`
+`NodeFault` derives `Debug`, so `.unwrap()` and `.expect()` work. It also
+implements `core::error::Error`. For a refused spawn, `source()` returns the
+`SpawnError`. `FaultKind`'s `Debug` prints variant names only, such as
+`Spawn(Busy)` or `ReadyDepTimeout { dep: "imu-reader" }`. `defmt::Format`
 arrives with the `defmt` feature.
 
 | `FaultKind` | what it names | returned by |
 |---|---|---|
-| `ExecutorSlotEmpty` | an `executor:` slot still empty at the deadline | `start`, `start_node`, `respawn_terminate`, `activate`, direct `restart`, pool growth |
+| `ExecutorSlotEmpty` | an `executor:` slot still empty at the deadline | `start`, `start_node`, `respawn_terminate`, `activate`, `apply_control` (`Activate`), direct `restart`. `run()` and pool growth only log it |
 | `ResourceMissing` | a `resources:` slot, or an unprovided `divisible` budget, unfilled at the deadline | same |
 | `ReadyDepTimeout { dep }` | a `ready` dep that never asserted | same |
 | `Spawn(SpawnError)` | the spawn was refused: a full task pool, a refused `state:` allocation (`heap-state`), or the previous instance of the node still running when its `slot_timeout` ran out (a `spawn:` task that keeps awaiting after its ack) | same |
-| `ShutdownTimeout` | a node that missed the shutdown-ack deadline (its divisible shares are released either way) | `stop_node`, `teardown`, `apply_control`, `run_pools` and `pool_pass` (a wedged shrink) |
-| `RestartStorm` (feature `restart-intensity`) | a `restart` refused because the node already used its `restart_budget:` inside the current window; nothing was stopped and the node keeps running as it was | `restart`, `apply_control` (`Restart` propagates it rather than absorbing it) |
+| `ShutdownTimeout` | a node that missed the shutdown-ack deadline (its divisible shares are released either way) | `stop_node`, `teardown`, `deactivate`, `restart`, `apply_control`, `run()`, `run_pools` and `pool_pass` (a wedged shrink) |
+| `RestartStorm` (feature `restart-intensity`) | a `restart` refused because the node already used its `restart_budget:` inside the current window; nothing was stopped and the node keeps running as it was | `restart`, `apply_control` (`Restart` returns it), `run()` |
+
+`run()` absorbs the four bring-up kinds: `ExecutorSlotEmpty`,
+`ResourceMissing`, `ReadyDepTimeout` and `Spawn`. It logs each one, reports
+it as a `Faulted` lifecycle event, and keeps driving. It returns only
+`ShutdownTimeout` and, with `restart-intensity`, `RestartStorm`.
 
 ## The other three
 
@@ -49,6 +57,8 @@ arrives with the `defmt` feature.
 - `ControlQueueFull`: what `try_request_control` returns when the mailbox is
   full. The async `request_control` instead waits for capacity; neither
   drops a command.
+
+All four implement `Display` and `core::error::Error`.
 
 `SpawnError` is re-used from embassy-executor and only appears inside
 `FaultKind::Spawn`.
@@ -84,11 +94,25 @@ arrives with the `defmt` feature.
 
 ## Escalation
 
-Bring-up faults from `run()` are typically escalated hard (a `panic!` into a
-hardware-watchdog reset): the graph is the product; if it cannot come up,
-nothing should run. Shutdown faults name a wedged task and are the more
-interesting case: retry, log and continue degraded, or reset, as the domain
-demands. A `RestartStorm` from `run()` names a crash loop the restart
-policy refused to feed: the node is still running as it was, and
-deactivating it, degrading, or resetting is again the application's call.
-The library's contract ends at returning the fault with provenance.
+`start()` is fail-fast. When the graph is the product, its bring-up fault
+is often escalated hard, with a `panic!` into a hardware-watchdog reset. If
+the graph cannot come up, nothing should run.
+
+`run()` does not return bring-up faults. It logs each one and reports it as
+a `Faulted` lifecycle event. The node stays down and enabled, and `run()`
+keeps driving. An app that wants the hard policy has two options:
+
+- apply it in a lifecycle consumer, or
+- call `start()` first, escalate its result, then call `run()`.
+
+What `run()` does return is the more interesting case:
+
+- A `ShutdownTimeout` names a wedged task. Retry, log and continue
+  degraded, or reset, as the domain demands.
+- A `RestartStorm` names a crash loop the restart policy refused to feed.
+  The node is still running as it was. Deactivating it, degrading or
+  resetting is again the application's call.
+
+Re-entering `run()` after a return is safe. It retries every enabled node
+that is down. The library's contract ends at reporting the fault with
+provenance.

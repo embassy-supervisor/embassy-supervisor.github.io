@@ -185,7 +185,7 @@ fn frame_pool_and_encoder_lifecycle() {
         "the allocator stops once the holders released"
     );
     assert!(
-        leased.is_drained(),
+        leased.is_closed(),
         "the pool refuses new frames after teardown"
     );
     assert!(leased.lease().is_none(), "a drained pool hands out nothing");

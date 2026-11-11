@@ -148,6 +148,15 @@ and durations on hardware.
 - A `deps: [X ready]` edge waits at the gate for the default 100 ms
   `slot_timeout`: give consumers of slow providers an explicit
   `slot_timeout:`, or the supervisor will (correctly) fault the bring-up.
+- Every fault the supervisor reports reaches the page through a lifecycle
+  sink. A bring-up or activation fault leaves the faulted node down and the
+  rest of the graph up. Fix the cause first, for example provide the
+  resource by hand or make the provider ready. Then start, activate or
+  restart the node from its card. Providing the resource alone does not
+  bring it back.
+- `run()` returns only two faults: a missed shutdown ack and a refused
+  restart. The page's driver re-enters `run()` after either one. Re-entry
+  retries every enabled node that is down.
 - Wedge swallows the shutdown ack, so the next stop or restart surfaces a
   real `ShutdownTimeout`. `clear fault` delivers the swallowed ack and
   lets a restart succeed. Stall survives a stop, so restart without clear

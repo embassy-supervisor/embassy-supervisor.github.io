@@ -208,11 +208,15 @@ before anything is stopped. See
 
 ## Feature gates
 
-Constructs behind Cargo features (`ready`, `bound`, `observed`, `veto`,
-`divisible`, `serialized`, `local`, `state:`, `beat_timeout:`,
-`enabled_if:`, `restart_budget:`) always **parse**; whether your build
+Constructs behind Cargo features (`ready`, `bound`, `reads:`/`writes:`,
+`observed`, `veto`, `discover`, `dataflow:` entries, `local`, `divisible`,
+`state:`, `beat_timeout:`, `beat_window:`, `enabled_if:`,
+`restart_budget:`, `ready_on_write`) always **parse**. Whether your build
 permits them is policy applied afterwards. Using one without its feature is
-a compile error that names the feature.
+a compile error that names the feature. The exception is a construct gated
+by a `#[cfg]` on its item, entry or clause. The macro then leaves the
+construct out and emits the rejection as a `compile_error!` under the same
+cfgs. A build where the cfg is false then compiles without the feature.
 
 ## `#[cfg(...)]`
 
@@ -220,22 +224,27 @@ Allowed on any node or pool, on individual deps, on individual resource
 entries (gate the worker's matching parameter with the same attribute), and
 on a node's value-level clauses: the timeouts, `beat_window:`,
 `ready_on_write`, `disabled`, `discover`, `enabled_if:` and
-`restart_budget:`. A gated `enabled_if:` or `restart_budget:` in a build
-without its feature is a compile error only where its `#[cfg]` holds. A
-node compiled out keeps its slot as `None` and is skipped everywhere.
+`restart_budget:`. A node compiled out keeps its slot as `None` and is
+skipped everywhere.
 
 ## What the compiler checks
 
 Anything structurally wrong is an error with a span on the offending token:
 
-- unknown dependency, duplicate dependency, duplicate node or pool name
+- unknown dependency; a dependency repeated in one `deps:` list under the
+  same `#[cfg]`s; duplicate node or pool name
+- two items with one runtime name. Node names are lower-cased, and a pool
+  member is named `<pool><index>`. So `Net` beside `NET`, or node `W0`
+  beside pool `W`, would make a lookup by name find only the first
 - unknown `executor:` name; `executor:` combined with a closure spawn
-- `task:` and `spawn:` together; a closure under `task:`; `resources:`
-  without `task:`
+- `task:` and `spawn:` together; a closure under `task:`; `resources:` or
+  `state:` without `task:`, on a node or a pool
 - empty or duplicate resource names; contradictory kind markers; a `shared`
   slot redeclared with a different shape
 - `local` without the `local-resources` feature; a `local` slot declared on
-  two executors
+  two executors; a `local` slot provided by a node the graph does not spawn
+  (a parked node or a `spawn:` closure). The macro cannot check that
+  node's executor
 - `divisible` mixed with another kind or given a type, or used without the
   `budget` feature
 - `veto` on a `reads:` entry, without the `veto` feature, on a gate with too
@@ -246,7 +255,17 @@ Anything structurally wrong is an error with a span on the offending token:
 - a repeated clause, a second `exit:` or `provides:`; `enabled_if:` or
   `restart_budget:` without its feature; a `restart_budget:` with no `in`, a
   `MAX` outside 1..=65535, or a `WINDOW_MS` of 0
-- pool bounds violations; a `pool` without the `pool` feature
+- literal pool bounds outside `min:` <= `max:` <= member count. Bounds
+  given as const expressions fail a const assertion instead
+- an empty pool; a `#[cfg]` on one pool member (gate the whole pool); a
+  `pool` without the `pool` feature
+- a fragment body that sets `name:`, an `observe` default or a
+  `default executor`. All three are graph-wide, and the compose site pastes
+  every fragment into one graph
+- `ready_on_write` without the `liveness-monitor` feature, or without
+  `beat_timeout:`. It also needs an `observed beat` write that is gated like
+  it or not gated at all. The monitor sweep asserts the readiness by polling
+  that write
 - more than 256 slots (all graph indices are `u8`)
 - an empty `resources: []`; a suffixed integer literal (`500u32`) in a
   clause; an attribute other than `#[cfg]` on a list entry; two list entries

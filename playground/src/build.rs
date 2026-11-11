@@ -683,15 +683,17 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
         order[k] = slot as u8;
     }
 
-    let graph: &'static PgGraph = leak(Graph {
-        nodes: slots,
-        topo: PlaygroundTopo {
-            rows: dep_rows,
-            order,
-        },
-        pools: Box::leak(pools.into_boxed_slice()),
-        graph_ref,
-    });
+    let graph: &'static PgGraph = leak(
+        Graph::new(
+            slots,
+            PlaygroundTopo {
+                rows: dep_rows,
+                order,
+            },
+        )
+        .with_pools(Box::leak(pools.into_boxed_slice()))
+        .with_graph_ref(graph_ref),
+    );
     let sup: &'static PgSupervisor = leak(Supervisor::new(graph));
 
     registry::install(node_rts, signals, resources, pool_rts);
@@ -703,12 +705,14 @@ pub fn build(model: GraphModel, behaviors_json: &str) -> Result<&'static Built, 
         escalations,
     };
     BUILT.set(built).ok().expect("built twice");
+    embassy_supervisor::set_lifecycle_sink(crate::events::record_lifecycle);
     Ok(BUILT.get().unwrap())
 }
 
-/// Drive the built supervisor until a fault: `run()` brings the graph up with
+/// Drive the built supervisor: `run()` brings the graph up best-effort with
 /// the liveness monitor alongside, then applies pool, control and bound-dep
-/// wakes one at a time.
+/// wakes one at a time. Faults reach the page through the lifecycle sink;
+/// this returns only on a missed shutdown ack or a refused restart.
 pub async fn drive_supervisor(
     spawner: &embassy_executor::Spawner,
 ) -> embassy_supervisor::NodeFault {

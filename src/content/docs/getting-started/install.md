@@ -18,7 +18,11 @@ description: Add embassy-supervisor to a firmware, pick the right feature set, a
   resolves to the same revision through your `[patch]` section.
 - No allocator needed. No `unsafe` in the library
   (`#![forbid(unsafe_code)]`); two optional features can emit small,
-  documented `unsafe` helpers into *your* crate, and both are opt-in.
+  documented `unsafe` helpers into *your* crate, and both are opt-in. With
+  `local-resources`, your own calls on a `local` slot are `unsafe` too.
+- On a target without atomic compare-and-swap, enable
+  `portable-atomic/critical-section` or
+  `portable-atomic/unsafe-assume-single-core` in the application.
 
 ## Add the crate
 
@@ -32,7 +36,7 @@ supervisor can do is opt-in:
 
 ```toml [Cargo.toml]
 [dependencies]
-embassy-supervisor = "0.13"
+embassy-supervisor = "0.14"
 
 [features]
 # an example application feature that turns on supervisor capabilities

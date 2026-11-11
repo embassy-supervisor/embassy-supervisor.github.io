@@ -50,14 +50,14 @@ foundations. The pages below are the ones worth bookmarking.
 
 - [GitHub repository](https://github.com/cedrivard/embassy-supervisor) -
   source, the reference firmware, the bootloader and the host tools.
-- [0.4 to 0.5 migration table](https://github.com/cedrivard/embassy-supervisor/blob/main/supervisor/README.md#migration)
+- [Migration tables](https://github.com/cedrivard/embassy-supervisor/blob/main/supervisor/README.md#migration)
   - what changed between the releases, row by row.
 - [embassy-supervisor on crates.io](https://crates.io/crates/embassy-supervisor)
   and [on docs.rs](https://docs.rs/embassy-supervisor) - the API, item by
   item.
-- [Video walkthrough](https://youtu.be/rlLaaMKMPWo) - the architecture in
-  one sitting: the declaration, the guarantees, executor tiers, the
-  lifecycle matrix.
+- [The reference guide](https://docs.rs/embassy-supervisor/latest/embassy_supervisor/guide/index.html)
+  - the crate's own chapters: model, DSL, dataflow, pools, executors,
+  composing, observability, testing.
 - [embassy-supervisor-observe](https://crates.io/crates/embassy-supervisor-observe)
   - the facade a signal library implements in one line.
 - [embassy-supervisor-tools](https://crates.io/crates/embassy-supervisor-tools)

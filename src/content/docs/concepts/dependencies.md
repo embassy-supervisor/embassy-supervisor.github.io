@@ -68,7 +68,8 @@ async fn net_task(node: &'static TaskNode) {
 Semantics worth knowing:
 
 - `set_ready()` latches until `clear_ready()` or the next pre-spawn reset, so
-  a respawned provider re-asserts for its new instance.
+  a respawned provider re-asserts for its new instance. Both calls are
+  idempotent. A call that does not change the flag wakes nobody.
 - The wait is bounded by the **dependent's** `slot_timeout` and fails the
   spawn with `FaultKind::ReadyDepTimeout { dep }`, which names the dep that
   never asserted. A provider that never becomes ready is a loud, retryable

@@ -67,12 +67,12 @@ async fn health_driver() {
     health::drive().await
 }
 
-/// The page's loop: report the fault and re-enter, never stop.
+/// The page's loop: the lifecycle sink reports every fault; re-enter, never
+/// stop.
 #[embassy_executor::task]
 async fn supervise(spawner: Spawner) {
     loop {
-        let fault = build::drive_supervisor(&spawner).await;
-        events::push_fault(&fault);
+        let _ = build::drive_supervisor(&spawner).await;
     }
 }
 

@@ -106,7 +106,7 @@ fn demand_start_and_leases() {
     let l2: &'static embassy_supervisor::Leased<std::sync::atomic::AtomicU32> = leased;
     std::thread::spawn(move || futures_executor_block_on_drain(l2));
     assert!(
-        settle(|| leased.is_drained(), 5000),
+        settle(|| leased.is_closed(), 5000),
         "drain should empty the lease gauge"
     );
     assert!(

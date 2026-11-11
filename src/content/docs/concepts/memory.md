@@ -95,14 +95,14 @@ symbol sizes:
 | mechanism | static RAM | notes |
 |---|---|---|
 | cross-tier restarts | 64 B per `executor NAME;` | the demo's three executors take 192 B |
-| `task:` node | 112 B per node, the `TaskHandle` | the `NodeCfg` (104 B) and the `TaskNode` (8 B) are flash constants; a pool holds one handle array, one entry per member |
-| `lifecycle-events` | 132 B, plus your consumer task | the demo's consumer added 48 B |
+| `task:` node | 108 B per node, the `TaskHandle` | the `NodeCfg` (96 B) and the `TaskNode` (8 B) are flash constants; a pool holds one handle array, one entry per member. With no features the `TaskHandle` is 28 B and the `NodeCfg` 44 B |
+| `lifecycle-events` | 132 B, plus your consumer task | the 8-slot queue (128 B) and its drop counter (4 B) |
 | `lifecycle-sink` | 4 B | |
 
-On the demo, moving from the queue and its consumer to the sink cut the
-feature's `.bss` from +380 B to +204 B and its flash by 424 B. Of the
-remaining 204 B, 4 B are the sink; the other 200 B are the firmware's own
-16-entry event ring.
+The demo records events through the sink: the feature costs it 204 B of
+`.bss`, of which 4 B are the sink and the other 200 B the firmware's own
+16-entry event ring. The queue instead costs its 132 B plus the consumer
+task's storage.
 
 ## Next
 

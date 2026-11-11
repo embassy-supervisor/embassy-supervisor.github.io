@@ -125,7 +125,8 @@ cycle.
 The wait uses the **dependent's** `slot_timeout`. The default 100 ms suits
 resource slots filled before the graph starts, not driver init. Because the
 sensor may need longer, `UPLOADER` uses `slot_timeout: 1000`. A missed
-readiness deadline becomes a `ReadyDepTimeout` fault.
+readiness deadline becomes a `ReadyDepTimeout` fault. `run()` logs it and
+leaves `UPLOADER` down until a control `Activate` retries it.
 
 The macro expands to statics at the call site:
 
@@ -147,15 +148,17 @@ rest of the run.
 #[embassy_executor::task]
 async fn supervisor_task(spawner: embassy_executor::Spawner) {
     let sup = embassy_supervisor::Supervisor::new(&GRAPH);
-    // Start the graph and keep driving it. Only returns on a fault.
+    // Start the graph and keep driving it. Returns only on a missed shutdown
+    // ack (or, with `restart-intensity`, a refused restart).
     let fault = sup.run(&spawner).await;
     defmt::panic!("supervisor: {}", fault);
 }
 ```
 
 `Supervisor::new` is computed at compile time, so it cannot fail. `run()`
-starts the graph and runs the driver loop. Split the pieces if the driver
-needs to watch other wake sources.
+starts the graph best-effort and runs the driver loop. A node that fails to
+come up is logged and left down, and the rest keeps running. Split the pieces if the
+driver needs to watch other wake sources.
 
 ## 4. main
 

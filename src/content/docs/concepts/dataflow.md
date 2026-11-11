@@ -153,6 +153,30 @@ async fn eskf_task(node: &'static TaskNode) {
 // node ESKF = Terminate, deps: [IMU ready], task: eskf_task, discover;
 ```
 
+`#[dataflow]` goes above `#[embassy_executor::task]`. The other order is a
+compile error, because the task macro has already replaced the body with its
+spawner. `#[dataflow]` goes on free fns only, because its tables are module
+statics. A method is rejected. A verb names its signal directly: either
+`&path::TO_SIGNAL`, or one element of a path-named array at a literal or
+const index (`&ARR[0]`, `&ARR[CONST]`).
+
+A `#[cfg]` in the body gates the entries it covers. The scan understands a
+`#[cfg]` on:
+
+- a statement, a block, a match arm, a field or an element
+- an `if #[cfg(p)] { .. } else { .. }` chain inside a macro invocation (the
+  `cfg_if!` shape). Each arm is gated on its own predicate and on the
+  negation of every arm before it.
+
+A `#[cfg]` on a closure parameter is not understood. The scan takes it to
+gate the closure's body.
+
+Several call sites of one signal in one direction fold into one entry:
+
+- If any site is ungated, the entry is ungated.
+- Otherwise the entry is gated on `any(..)` of the sites' predicates.
+- The strongest verb wins. A `beat_*` site makes it a beat entry.
+
 Two ways the graph binds derived tables:
 
 - **`discover`**: the `task:` fn's own tables are the node's declaration. A

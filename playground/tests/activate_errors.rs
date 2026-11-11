@@ -1,11 +1,12 @@
-//! Activation faults must reach the page's report-and-reenter driver loop.
-//! One test and one build: the interpreter's registry is process-global.
+//! Activation faults must reach the page through the lifecycle sink while
+//! `run()` keeps driving. One test and one build: the interpreter's registry
+//! is process-global.
 
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::time::{Duration as StdDuration, Instant};
 
 use embassy_executor::{Executor, Spawner};
-use embassy_supervisor::{ControlOp, Fault, FaultKind, NodeFault, try_request_control};
+use embassy_supervisor::{ControlOp, Fault, try_request_control};
 use embassy_supervisor_playground::{build, events, parse, registry};
 use embassy_time::{Duration, MockDriver};
 
@@ -23,15 +24,21 @@ const BEHAVIORS: &str = r#"{
     "CLIENT": { "kind": "idle" }
 }"#;
 
-static FIRST_FAULT: OnceLock<NodeFault> = OnceLock::new();
+/// Fault texts drained from the page snapshot, accumulated across polls.
+static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// Keep the same policy as the page: deliver the fault, then retry bring-up.
+fn seen_fault(text: &str) -> bool {
+    let mut seen = SEEN.lock().unwrap();
+    seen.extend(events::snapshot().faults);
+    seen.iter().any(|f| f == text)
+}
+
+/// The page's driver: `run()` reports faults through the sink and returns
+/// only a missed ack or a refused restart, which re-entering retries.
 #[embassy_executor::task]
 async fn supervise(spawner: Spawner) {
     loop {
-        let fault = build::drive_supervisor(&spawner).await;
-        events::push_fault(&fault);
-        let _ = FIRST_FAULT.set(fault);
+        let _ = build::drive_supervisor(&spawner).await;
     }
 }
 
@@ -87,7 +94,7 @@ fn activation_reports_consumed_resource_fault_and_recovers() {
     assert!(!client.is_running());
     assert!(client.is_disabled());
     assert!(!hw.slot.is_filled(), "RADIO consumes HW on entry");
-    assert!(FIRST_FAULT.get().is_none());
+    assert!(SEEN.lock().unwrap().is_empty() && events::snapshot().faults.is_empty());
 
     radio.inject(Fault::Crash).expect("crash RADIO");
     assert!(
@@ -100,13 +107,12 @@ fn activation_reports_consumed_resource_fault_and_recovers() {
     );
 
     try_request_control(client, ControlOp::Activate).expect("queue CLIENT activation");
+    let missing = format!("{}: a resource slot was never provided", radio.name());
     assert!(
-        settle(|| FIRST_FAULT.get().is_some(), 5000),
-        "activation fault never reached the supervisor driver"
+        settle(|| seen_fault(&missing), 5000),
+        "the activation fault never reached the lifecycle sink: {:?}",
+        SEEN.lock().unwrap()
     );
-    let first_fault = FIRST_FAULT.get().expect("reported activation fault");
-    assert!(std::ptr::eq(first_fault.node, radio), "{first_fault:?}");
-    assert!(matches!(first_fault.kind, FaultKind::ResourceMissing));
     assert!(!radio.is_running());
     assert!(!client.is_running());
     assert!(
@@ -114,15 +120,20 @@ fn activation_reports_consumed_resource_fault_and_recovers() {
         "Activate clears CLIENT's disabled latch"
     );
 
-    // The page's reentry can report more faults while HW is absent. Repair
-    // the resource, not the fault count, and let that same loop recover.
+    // A faulted node stays down and enabled while `run()` keeps serving
+    // control: providing HW alone brings nothing back, the next Activate does.
     hw.slot.provide(1);
+    assert!(
+        !settle(|| radio.is_running(), 500),
+        "RADIO came back without an Activate"
+    );
+    try_request_control(client, ControlOp::Activate).expect("queue CLIENT activation");
     assert!(
         settle(
             || radio.is_running() && radio.is_ready() && client.is_running() && client.is_ready(),
             5000
         ),
-        "reproviding HW did not recover RADIO and CLIENT through driver reentry"
+        "Activate after reproviding HW did not bring RADIO and CLIENT up"
     );
     assert!(!hw.slot.is_filled(), "recovered RADIO consumes the new HW");
 }

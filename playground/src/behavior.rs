@@ -332,7 +332,7 @@ fn prologue(rt: &'static NodeRt) {
     }
     for s in &rt.writes {
         if let Gate::Leased(l) = &s.gate
-            && l.is_drained()
+            && l.is_closed()
         {
             l.reopen();
             log::info!("{}: reopened {}", rt.node.name(), s.name);

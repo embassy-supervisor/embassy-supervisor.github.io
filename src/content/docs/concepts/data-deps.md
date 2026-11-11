@@ -37,6 +37,9 @@ so the gate resolves the producer by the static's address, over the caller's
 own graph, covering `discover`-derived tables no declaration site could
 name. Two graphs in one binary never answer for each other.
 
+Opening a gate sends `Activate` for a producer that is down, which also
+clears a `disabled` latch set by an operator or by `enabled_if:`.
+
 `open` is the only awaiting verb, it fires once per consumer at setup, and it
 grants no exclusive access. It hands back an `Open<T>` **guard**:
 the open is counted before it waits, and the count drops when the guard
@@ -98,8 +101,10 @@ crate::NET_STACK.drain().await;
 
 `drain` closes the signal to new leases, then waits for the live ones to
 drop. Closing is what makes the count trustworthy: afterwards an asker gets
-`None`, the honest answer, rather than a handle about to dangle. A producer
-that comes back up calls `reopen`.
+`None`, the honest answer, rather than a handle about to dangle.
+`is_closed()` reports that state: the signal is closed to new leases, and
+leases taken earlier may still be live. A producer that comes back up calls
+`reopen`.
 
 ```mermaid
 sequenceDiagram

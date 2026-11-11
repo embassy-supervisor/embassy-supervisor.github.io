@@ -8,7 +8,7 @@
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
-use embassy_supervisor::{Fault, NodeFault, trace};
+use embassy_supervisor::{Fault, LifecycleEvent, LifecycleKind, NodeFault, trace};
 use serde::Serialize;
 
 use crate::registry::{self, Gate, HELD_BY_NONE, NodeRt};
@@ -184,6 +184,21 @@ pub fn push_fault(fault: &NodeFault) {
     FAULTS.lock().unwrap().push(format!("{fault}"));
 }
 
+/// The lifecycle sink `build` installs: every fault the supervisor reports
+/// reaches the page here, bring-up and activation faults included. `run()`
+/// logs those and keeps driving; it returns only a missed shutdown ack or a
+/// refused restart, which arrive here too.
+pub fn record_lifecycle(ev: LifecycleEvent) {
+    if let LifecycleKind::Faulted(kind) = ev.kind {
+        let fault = NodeFault {
+            node: ev.node,
+            kind,
+        };
+        log::error!("supervisor faulted: {fault}");
+        push_fault(&fault);
+    }
+}
+
 /// Record a health event and what the escalation policy did with it. Fed by
 /// the `health` driver task, not drained here: the application owns the
 /// policy, the snapshot only reports it.
@@ -241,7 +256,7 @@ pub fn snapshot() -> Snapshot {
             let (kind, leases, drained) = match &s.gate {
                 Gate::Plain(_) => ("plain", None, None),
                 Gate::Backed(_) => ("backed", None, None),
-                Gate::Leased(l) => ("leased", Some(l.leases()), Some(l.is_drained())),
+                Gate::Leased(l) => ("leased", Some(l.leases()), Some(l.is_closed())),
                 Gate::Veto(_) => ("veto", None, None),
             };
             let openers = match &s.gate {

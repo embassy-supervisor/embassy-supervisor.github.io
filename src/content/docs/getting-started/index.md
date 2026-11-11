@@ -173,9 +173,6 @@ matter.
   crate and pick features.
 - [Your first graph](/getting-started/first-graph/):
   a working example, line by line.
-- Prefer video? There is a
-  [walkthrough of the architecture](https://youtu.be/rlLaaMKMPWo) covering
-  the graph declaration, executor tiers and the lifecycle model.
 - The source lives on
   [GitHub](https://github.com/cedrivard/embassy-supervisor), and the API on
   [docs.rs](https://docs.rs/embassy-supervisor).

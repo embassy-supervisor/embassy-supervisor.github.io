@@ -54,12 +54,12 @@ dependents downward.
 
 | operation | Terminate | Pause | OnDemand | disabled | detached |
 |---|---|---|---|---|---|
-| `start` | spawn in dep order; idempotent | spawn cold, or **resume** an instance parked by an earlier teardown | skipped | skipped | first start spawns it; re-entry skips |
+| `start` | spawn in dep order; idempotent | spawn cold, or **resume** an instance parked by an earlier teardown once its `ready` deps assert | skipped | skipped | first start spawns it; re-entry skips |
 | `teardown` | stop + ack | stop + ack, parks | stop if running | nothing to do | skipped |
 | `deactivate` | seed: disabled + stopped; transitive dependents: `collateral` + stopped, dependents first | disabled (or `collateral`) + stopped, parks | disabled + stopped, the whole pool when a member is the target; `collateral` as a dependent | re-disabled (idempotent) | skipped, even when targeted |
 | `activate` | enabled + started after its transitive deps; a `collateral` dependent with no disabled dep left is released and restarted in the same wave | enabled + resumed in place | enabled/released only, policy regrows | clears the latch | skipped |
 | `resume_node` | no-op (wrong mode) | reset + resumed in place | no-op | skipped | no-op |
-| `restart` | cycle node + transitive dependents, re-gated on the way up | resumed, never respawned | left down | skipped | skipped |
+| `restart` | cycle node + transitive dependents, re-gated on the way up | resumed in place once its `ready` deps assert, never respawned | brought back if it was running, else left down | brought back if it was running (started by hand), else skipped | skipped |
 | `respawn_terminate` | reset + respawn in dep order | untouched | left down | skipped | skipped |
 | `resume_pausable` | untouched | reset + resumed in place | untouched | skipped | left parked |
 
@@ -72,6 +72,12 @@ dependent with no disabled node left in its dependencies. Released
 deactivations compose: a node under two deactivated ancestors comes back
 on the second `activate`, and a node deactivated directly keeps its latch
 through an ancestor's cycle. `start_node` overrides the hold by hand.
+
+`restart` is a cycle. Every node that was running when it began comes
+back. That includes a `disabled` node started by hand and a running
+`OnDemand` member. A member that was down comes up only when it is enabled,
+not `collateral` and not `OnDemand`. `resume_node` and `resume_pausable`
+skip a node stopped by a `bound` provider until that provider serves again.
 
 ## Stops are a wave, not a loop
 
@@ -111,6 +117,10 @@ spawns before its in-pass deps. In a `start()` wave a node's `slot_timeout`
 covers all its gates together, from the moment its dependencies resolve; the
 single-node verbs (`start_node`, and through them the cascades) budget per
 gate instead.
+A spawn can be refused as `Busy`, for example when the task pool is full
+or the previous instance is still finishing. The wave then gives the
+executor one pass and retries every 1 ms until the budget ends. It never
+spins at the supervisor's priority.
 
 ## Restarting `task:` nodes
 
@@ -153,6 +163,11 @@ A worker that acknowledges its stop itself and then returns (the
 `run_cancellable_acked` idiom) can be reported as either `Stopped` or
 `Exited`. A worker that returns on its own, without being asked to stop,
 produces no event; `has_exited()` is how to read it.
+
+`Supervisor::run` does not return a bring-up or activation fault. It logs
+the fault and reports it as `Faulted`. The node stays down and enabled, and
+`run` keeps driving. Those faults reach the app through a lifecycle
+consumer. `run` itself returns only `ShutdownTimeout` or `RestartStorm`.
 
 **The queue** (`lifecycle-events`): one consumer awaits the events.
 

@@ -86,9 +86,11 @@ guarantees are cross-thread:
 assert!(NET.is_running() && HTTP.is_running());
 
 // Gate failures: an unprovided resource or an unasserted readiness comes
-// back from start() as a NodeFault naming the node and the gate.
+// back from start() as a NodeFault naming the node and the gate (run()
+// logs it, reports LifecycleKind::Faulted and keeps driving instead).
 let fault = sup.start(&spawner).await.unwrap_err();
-assert_eq!(fault.node.name(), "http"); // e.g. ReadyDepTimeout { dep: NET }
+assert_eq!(fault.node.name(), "http");
+assert_eq!(format!("{:?}", fault.kind), r#"ReadyDepTimeout { dep: "net" }"#);
 
 // Control: apply_control from the test, then:
 assert!(OTA.is_disabled());
