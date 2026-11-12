@@ -61,6 +61,8 @@ Rules worth knowing:
 - One compose site per binary: it emits the graph statics and, under
   `trace-hooks`, the hook symbols.
 
+<div class="graph-slot" style="--gw: 758.45; --gh: 182">
+
 ```mermaid
 flowchart LR
     accDescr: Fragments relay into one compose site
@@ -73,6 +75,8 @@ flowchart LR
     F2 -- relay macro --> C
     C -- generates --> G
 ```
+
+</div>
 
 ## Several graphs in one binary
 

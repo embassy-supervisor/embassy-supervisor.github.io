@@ -100,17 +100,14 @@ export default function TaskPane({ snapshot, stale, cores }: Props) {
   };
   const th = (k: SortKey, label: string, title?: string) => (
     <th
-      role="button"
-      tabIndex={0}
+      scope="col"
       aria-sort={sortKey === k ? (sortDesc ? 'descending' : 'ascending') : undefined}
-      onClick={() => clickSort(k)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') clickSort(k);
-      }}
       title={title}
     >
-      {label}
-      {sortKey === k ? (sortDesc ? ' ↓' : ' ↑') : ''}
+      <button type="button" className="pg-sort-btn" onClick={() => clickSort(k)}>
+        {label}
+        {sortKey === k ? (sortDesc ? ' ↓' : ' ↑') : ''}
+      </button>
     </th>
   );
 
@@ -151,18 +148,18 @@ export default function TaskPane({ snapshot, stale, cores }: Props) {
             <tr>
               {th('name', 'task')}
               {th('executor', 'exec')}
-              <th title="declared placement: wasm is single-threaded, so this is scenario metadata, not a measured core">
+              <th scope="col" title="declared placement: wasm is single-threaded, so this is scenario metadata, not a measured core">
                 core
               </th>
               {th('status', 'status', 'report_status()')}
-              <th title="mark_busy() / mark_idle()">busy</th>
+              <th scope="col" title="mark_busy() / mark_idle()">busy</th>
               {th('polls', 'polls', 'poll count from the trace recorders')}
               {th('last', 'last poll', 'browser wall time, not MCU time')}
               {th('max', 'max poll', 'browser wall time; a hog marker past 50ms')}
               {th('share', 'share', "this node's exec time as a share of its executor's")}
               {th('beat', 'beat', 'ms since the last beat (virtual) — only for nodes with a beat_timeout')}
               {th('epoch', 'epoch', 'bumps on every activation; a restart is visible here')}
-              <th>flags</th>
+              <th scope="col">flags</th>
             </tr>
           </thead>
           <tbody>

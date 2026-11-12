@@ -72,6 +72,8 @@ Both latches survive wake respawns and pool regrows; only `activate`
 clears them. `activate` on a **pool member** expands to the whole pool:
 respawn the floor, re-enable the on-demand members.
 
+<div class="graph-slot" style="--gw: 484.23; --gh: 294">
+
 ```mermaid
 flowchart TD
     accDescr: Cascades expand in opposite directions
@@ -83,6 +85,8 @@ flowchart TD
     UPLOAD -. "activate(UPLOAD)<br/>pulls WIFI, NET up" .-> WIFI
     WIFI -. "deactivate(WIFI)<br/>drops UPLOAD, NET first" .-> UPLOAD
 ```
+
+</div>
 
 Both cascades return `Result<(), NodeFault>`. `deactivate` commonly returns
 a `ShutdownTimeout` naming a node that missed its ack.

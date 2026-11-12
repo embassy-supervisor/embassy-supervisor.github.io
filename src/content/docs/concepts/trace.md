@@ -24,6 +24,8 @@ opaque id. The `trace` family makes the supervisor their consumer, with
   `trace::stalled_task(executor, threshold)` for blocked-task detection from
   a context that can still run.
 
+<div class="graph-slot" style="--gw: 1010.05; --gh: 159">
+
 ```mermaid
 flowchart LR
     accDescr: Executor time decomposes into idle, per-task polls, overhead
@@ -35,6 +37,8 @@ flowchart LR
         OVH["overhead<br/>scheduler + hooks + ISRs"]:::paused
     end
 ```
+
+</div>
 
 ## Reading the numbers
 

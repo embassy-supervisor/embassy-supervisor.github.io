@@ -503,6 +503,24 @@ export default function PlaygroundApp() {
     return () => narrow.removeEventListener('change', clear);
   }, []);
 
+  // A focusable separator has to report its position. Each one reports the
+  // height in pixels of the row it resizes, kept current by observing it.
+  const mainHandleRef = useRef<HTMLDivElement>(null);
+  const bottomHandleRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handles = new Map<Element, HTMLDivElement>();
+    if (mainRef.current && mainHandleRef.current) handles.set(mainRef.current, mainHandleRef.current);
+    if (bottomRef.current && bottomHandleRef.current) handles.set(bottomRef.current, bottomHandleRef.current);
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const height = Math.round(entry.target.getBoundingClientRect().height);
+        handles.get(entry.target)?.setAttribute('aria-valuenow', String(height));
+      }
+    });
+    for (const row of handles.keys()) observer.observe(row);
+    return () => observer.disconnect();
+  }, []);
+
   const declOf = useCallback((name: string) => extractDecl(dsl, name), [dsl]);
 
   const clockMs = snapshot ? Math.round(snapshot.now_us / 1000) : 0;
@@ -570,13 +588,19 @@ export default function PlaygroundApp() {
           {editorHidden ? '◨ Show code' : '◧ Hide code'}
         </button>
         <div className="pg-time" role="group" aria-label="Virtual time">
-          <button className={speed === 0 ? 'on' : ''} onClick={() => setSpeed(0)} title="Pause virtual time">
+          <button
+            className={speed === 0 ? 'on' : ''}
+            aria-pressed={speed === 0}
+            onClick={() => setSpeed(0)}
+            title="Pause virtual time"
+            aria-label="Pause virtual time"
+          >
             ⏸
           </button>
-          <button className={speed === 1 ? 'on' : ''} onClick={() => setSpeed(1)} title="Real-time">
+          <button className={speed === 1 ? 'on' : ''} aria-pressed={speed === 1} onClick={() => setSpeed(1)} title="Real-time">
             1×
           </button>
-          <button className={speed === 10 ? 'on' : ''} onClick={() => setSpeed(10)} title="Fast-forward">
+          <button className={speed === 10 ? 'on' : ''} aria-pressed={speed === 10} onClick={() => setSpeed(10)} title="Fast-forward">
             10×
           </button>
           <button onClick={() => void step()} disabled={!running || speed !== 0} title="Step 100 ms">
@@ -631,9 +655,12 @@ export default function PlaygroundApp() {
 
       <div
         className="pg-resizer"
+        ref={mainHandleRef}
         role="separator"
         aria-orientation="horizontal"
         aria-label="Resize the graph area"
+        aria-valuemin={240}
+        aria-valuemax={1600}
         tabIndex={0}
         title="Drag to resize the graph; double-click to reset"
         onPointerDown={onResizeStart}
@@ -659,9 +686,12 @@ export default function PlaygroundApp() {
 
       <div
         className="pg-resizer"
+        ref={bottomHandleRef}
         role="separator"
         aria-orientation="horizontal"
         aria-label="Resize the logs and tasks row"
+        aria-valuemin={160}
+        aria-valuemax={1200}
         tabIndex={0}
         title="Drag to resize the logs and tasks; double-click to reset"
         onPointerDown={onBottomResizeStart}

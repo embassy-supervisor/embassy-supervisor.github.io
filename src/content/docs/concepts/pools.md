@@ -26,6 +26,8 @@ happens under load. The mode list reads: member 0 is `Terminate` (started at
 boot, the floor a `deps: [WORKERS]` edge resolves to), the rest are
 `OnDemand`, started by the policy and stopped by it.
 
+<div class="graph-slot" style="--gw: 1037.27; --gh: 90">
+
 ```mermaid
 flowchart LR
     accDescr: A pool grows under load and shrinks after a cooldown
@@ -39,6 +41,8 @@ flowchart LR
     M2 -. "still busy" .-> M3
     M3 -. "idle surplus 4 s<br/>shrink" .-> M2
 ```
+
+</div>
 
 ## How scaling decides
 

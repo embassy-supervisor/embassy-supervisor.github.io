@@ -67,6 +67,8 @@ budget. This composes with a **fallible heap**: an allocator that can return
 firmware. The supervisor's refusal to spawn without its resources is the
 same philosophy applied to structure.
 
+<div class="graph-slot" style="--gw: 857.62; --gh: 89.99">
+
 ```mermaid
 flowchart LR
     accDescr: Memory flows over one activation of a state node
@@ -78,6 +80,8 @@ flowchart LR
     H -- "&mut Type" --> T
     T -- "exit → drop<br/>heap back" --> H
 ```
+
+</div>
 
 ## What never uses the heap
 

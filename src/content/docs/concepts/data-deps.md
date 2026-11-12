@@ -106,6 +106,8 @@ drop. Closing is what makes the count trustworthy: afterwards an asker gets
 leases taken earlier may still be live. A producer that comes back up calls
 `reopen`.
 
+<div class="graph-slot" style="--gw: 756; --gh: 551">
+
 ```mermaid
 sequenceDiagram
     accDescr: A producer waits for every lease holder to drop before freeing the backing
@@ -121,6 +123,8 @@ sequenceDiagram
     L-->>P: zero holders
     P->>P: free the backing
 ```
+
+</div>
 
 What this buys over a `deps:` edge is exactness: the count covers **every**
 holder, including a consumer no table carries and a `detached` node, which

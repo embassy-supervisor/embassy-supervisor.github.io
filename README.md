@@ -71,6 +71,16 @@ notation mirrors what `supervisor-mermaid --runtime-deps` emits: solid edges
 for lifetime coupling, dotted for spawn order and polled relations, signal
 boxes in between.
 
+Each diagram reserves its space before it renders, so the page does not
+move. Wrap a new fence in `<div class="graph-slot" style="--gw: W; --gh: H">`,
+with a blank line before and after the fence. The landing page hero carries
+the same two values on `.home-hero-graph` in `src/pages/index.astro`. `W` and
+`H` are the rendered svg viewBox width and height. Read them in the browser
+with `document.querySelector('figure.graph svg').viewBox.baseVal`, and
+measure again when a diagram changes. Under `bun run dev`, the browser
+console warns when a wrapper's values no longer match its diagram, and
+prints the values to use. It also warns about a diagram with no wrapper.
+
 ### Adding a page
 
 1. Add `src/content/docs/<group>/<name>.md` with `title` and `description`

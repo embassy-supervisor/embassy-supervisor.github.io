@@ -125,7 +125,7 @@ export default defineConfig({
             { label: 'Feature flags', slug: 'reference/features' },
             { label: 'Errors and limits', slug: 'reference/errors' },
             { label: 'Glossary', slug: 'reference/glossary' },
-            { label: 'Learn more', slug: 'reference/learn-more' },
+            { label: 'Further reading', slug: 'reference/learn-more' },
           ],
         },
       ],

@@ -1,0 +1,8 @@
+---
+// The body face is in the first paint of every page. Fetch it before the
+// stylesheet asks for it. This resolves to the same built file that the
+// @fontsource stylesheet in theme.css references, so it is downloaded once.
+import plexSans400 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2?url';
+---
+
+<link rel="preload" href={plexSans400} as="font" type="font/woff2" crossorigin />

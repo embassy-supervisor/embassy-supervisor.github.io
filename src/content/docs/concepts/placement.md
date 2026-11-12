@@ -12,6 +12,8 @@ One embassy firmware can run several executors at different priorities. The
 runs**: declare a slot, fill it at runtime, and annotate nodes with it, or
 make one slot the graph's `default executor` and annotate only the exceptions.
 
+<div class="graph-slot" style="--gw: 826.42; --gh: 212">
+
 ```mermaid
 flowchart TD
     accDescr: One supervisor places tasks across executor tiers
@@ -24,6 +26,8 @@ flowchart TD
     SUP --> IE
     SUP --> C1
 ```
+
+</div>
 
 ## An interrupt-priority tier
 

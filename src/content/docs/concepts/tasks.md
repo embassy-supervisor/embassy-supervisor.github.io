@@ -11,6 +11,8 @@ A supervised worker is an `async fn` whose first parameter is its node. The
 node is the task's half of the lifecycle protocol, and three rules cover all
 of it.
 
+<div class="graph-slot" style="--gw: 625; --gh: 616">
+
 ```mermaid
 sequenceDiagram
     accDescr: One task body from spawn through readiness to the shutdown ack
@@ -26,6 +28,8 @@ sequenceDiagram
     T-->>S: ack (combinator did it)
     Note over T: Terminate: return. Pause: park.
 ```
+
+</div>
 
 1. **Select your work against shutdown** at every await point that can block
    indefinitely, so a stop can reach you. The `run_cancellable*` combinators

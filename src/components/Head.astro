@@ -1,12 +1,14 @@
 ---
 import DefaultHead from '@astrojs/starlight/components/Head.astro';
 import Analytics from './Analytics.astro';
+import FontPreload from './FontPreload.astro';
 import ThemeBootstrap from './ThemeBootstrap.astro';
 ---
 
-<Analytics />
 <DefaultHead {...Astro.props} />
 <ThemeBootstrap />
+<FontPreload />
+<Analytics />
 
 <script>
   // Side panel modes: tiny, always needed on docs pages. Import first so the

@@ -31,6 +31,8 @@ description: "A declarative supervision layer for critical embedded systems: lif
   under pressure: industrial controllers, automotive ECUs, FPV flight
   stacks, protection relays, medical devices, and always-on gateways.
 
+<div class="graph-slot" style="--gw: 1051.66; --gh: 394">
+
 ```mermaid
 flowchart LR
     accDescr: A declaration becomes generated statics, then a supervisor drives executor tiers
@@ -49,6 +51,8 @@ flowchart LR
     SUP --> T2
     SUP <-. scales .-> POOL
 ```
+
+</div>
 
 ## Core capabilities
 

@@ -10,6 +10,8 @@ description: TaskNode, Graph and Supervisor, the three statics every supervised 
 Everything the supervisor does happens through three kinds of statics. The
 macro emits the first two; you construct the third.
 
+<div class="graph-slot" style="--gw: 1123.64; --gh: 218">
+
 ```mermaid
 flowchart LR
     accDescr: NodeCfg, TaskHandle and TaskNode form the Graph the Supervisor drives
@@ -24,6 +26,8 @@ flowchart LR
     NODE --> GRAPH
     GRAPH --> SUP
 ```
+
+</div>
 
 ## TaskNode
 

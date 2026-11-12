@@ -1,6 +1,7 @@
 ---
 import { Image } from 'astro:assets';
 import Analytics from '../components/Analytics.astro';
+import FontPreload from '../components/FontPreload.astro';
 import ThemeBootstrap from '../components/ThemeBootstrap.astro';
 import PlaygroundApp from '../components/playground/PlaygroundApp';
 import logo from '../assets/logo.svg';
@@ -13,12 +14,14 @@ const description =
   'Type a supervisor_graph! declaration and run it: the real embassy-supervisor runtime compiled to WebAssembly, with live graph, logs and virtual time.';
 ---
 
+<!doctype html>
 <html lang="en">
   <head>
-    <Analytics />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <ThemeBootstrap />
+    <FontPreload />
+    <Analytics />
     <meta name="description" content={description} />
     <title>Playground · embassy-supervisor</title>
     <link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml" />
@@ -46,7 +49,7 @@ const description =
     <div class="pg-page">
       <nav class="pg-nav">
         <a class="brand" href={`${base}`}>
-          <Image src={logo} alt="embassy-supervisor mark" width={24} height={24} />
+          <Image src={logo} alt="" width={24} height={24} loading="eager" />
           <span>embassy-supervisor</span>
         </a>
         <span class="pg-nav-title">Playground</span>
@@ -57,7 +60,7 @@ const description =
         >
       </nav>
       <main id="main">
-        <PlaygroundApp client:only="react" />
+        <PlaygroundApp client:load />
         <noscript>
           <p class="pg-error">The playground needs JavaScript and WebAssembly.</p>
         </noscript>

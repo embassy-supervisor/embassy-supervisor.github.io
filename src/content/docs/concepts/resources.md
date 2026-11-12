@@ -13,6 +13,8 @@ a handle an async bring-up produced. Instead of a global registry with
 panicking accessors, the graph threads the value into the worker at spawn
 through a slot, and "not there yet" becomes a gate the supervisor waits on.
 
+<div class="graph-slot" style="--gw: 957.64; --gh: 182">
+
 ```mermaid
 flowchart LR
     accDescr: A provider fills a resource slot; a consumer's spawn gates on it
@@ -26,6 +28,8 @@ flowchart LR
     SLOT -- "gate · slot_timeout" --> CONSUMER
     CONSUMER -. "take &mut T per activation<br/>restore on exit" .-> SLOT
 ```
+
+</div>
 
 ## The protocol
 

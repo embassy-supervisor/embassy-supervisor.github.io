@@ -118,6 +118,8 @@ widely-read signal into one aggregate box, `--legend` for a key,
 `--executors` to box nodes by the executor they spawn through,
 `--fragments` to box each fragment's items.
 
+<div class="graph-slot" style="--gw: 986.83; --gh: 76">
+
 ```mermaid
 flowchart LR
     accDescr: The tool pipeline from source to diagram
@@ -128,6 +130,8 @@ flowchart LR
 
     SRC --> PARSE --> MODEL --> OUT
 ```
+
+</div>
 
 ## supervisor-lint
 

@@ -100,6 +100,10 @@ function DeclName({ name, item }: { name: string; item?: string }) {
       <button
         className="pg-node-name pg-node-name-btn"
         onClick={() => setShow((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setShow(false);
+        }}
+        aria-expanded={show}
         title="show this item's declaration"
       >
         {name}
@@ -797,13 +801,13 @@ export default function GraphPane({
   return (
     <div className="pg-flow-host" ref={hostRef}>
       <div className="pg-view-filter" role="group" aria-label="Graph detail level">
-        <button className={view === 'nodes' ? 'on' : ''} onClick={() => setView('nodes')} title="node cards only">
+        <button className={view === 'nodes' ? 'on' : ''} aria-pressed={view === 'nodes'} onClick={() => setView('nodes')} title="node cards only">
           nodes
         </button>
-        <button className={view === 'signals' ? 'on' : ''} onClick={() => setView('signals')} title="nodes and signals">
+        <button className={view === 'signals' ? 'on' : ''} aria-pressed={view === 'signals'} onClick={() => setView('signals')} title="nodes and signals">
           +signals
         </button>
-        <button className={view === 'all' ? 'on' : ''} onClick={() => setView('all')} title="nodes, signals and resources">
+        <button className={view === 'all' ? 'on' : ''} aria-pressed={view === 'all'} onClick={() => setView('all')} title="nodes, signals and resources">
           +resources
         </button>
       </div>

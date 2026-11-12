@@ -10,6 +10,44 @@
 @import '@fontsource/ibm-plex-mono/500.css';
 @import '@fontsource/ibm-plex-mono/600.css';
 
+/* Stand-ins for IBM Plex while it loads. They are scaled to Plex's metrics,
+   so text keeps its size and the page does not move when Plex swaps in.
+   Liberation and Arimo/Cousine share the metrics of Arial and Courier New,
+   so one set of overrides covers all of them. The values come from the
+   latin Plex files with Capsize's fallback formula, the same one Astro's
+   font fallbacks use. Recompute them if the Plex files change. The
+   unicode-range is fontsource's latin subset: glyphs Plex lacks (arrows,
+   symbols) keep falling through to the system fonts further down. */
+@font-face {
+  font-family: 'IBM Plex Sans Fallback';
+  src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans'), local('Arimo');
+  font-weight: 100 600;
+  size-adjust: 101.1663%;
+  ascent-override: 101.3184%;
+  descent-override: 27.183%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Fallback';
+  src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('LiberationSans-Bold'), local('Arimo Bold');
+  font-weight: 700 900;
+  size-adjust: 98.5457%;
+  ascent-override: 104.0127%;
+  descent-override: 27.9058%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono Fallback';
+  src: local('Courier New'), local('CourierNewPSMT'), local('Liberation Mono'), local('LiberationMono'), local('Cousine');
+  size-adjust: 99.9837%;
+  ascent-override: 102.5167%;
+  descent-override: 27.5045%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* ---------------------------------------------------------------- tokens */
 
 :root {
@@ -23,8 +61,8 @@
   --sup-rose: #fb7185;
   --sup-pink: #f472b6;
   --sup-lime: #a3e635;
-  --sl-font: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --sl-font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+  --sl-font: 'IBM Plex Sans', 'IBM Plex Sans Fallback', ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: 'IBM Plex Mono', 'IBM Plex Mono Fallback', ui-monospace, 'Cascadia Mono', monospace;
 
   --sl-color-white: #f1f5ff;
   --sl-color-black: #0a0e1c;
@@ -46,6 +84,7 @@
   --sup-label: #8ea0bf;
   --sup-muted: #93a2c0;
   --sup-heading: #f1f5ff;
+  --sup-ink: var(--sup-heading);
   --sup-code-text: #7ee2f5;
   --sup-edge-glow: rgb(167 139 250 / 0.55);
   --sup-signal-glow: rgb(167 139 250 / 0.5);
@@ -79,6 +118,7 @@
   --sup-label: #5b688a;
   --sup-muted: #5b688a;
   --sup-heading: #0c1322;
+  --sup-ink: var(--sup-heading);
   --sup-code-text: #0c5f78;
   --sup-edge-glow: rgb(109 40 217 / 0.4);
   --sup-signal-glow: rgb(109 40 217 / 0.35);
@@ -91,8 +131,6 @@
   min-width: 0;
 }
 
-/* With a rail away, the reading column may use the freed space instead of
-   the default 45rem cap. */
 /* With a rail away (hidden or collapsed to a hover strip), the reading
    column may use the freed space instead of the default 45rem cap. */
 html:is(
@@ -104,8 +142,6 @@ html:is(
   --sl-content-width: min(72rem, calc(100vw - 4rem));
 }
 
-/* Starlight hugs the text to the TOC (auto 0); with no right rail the
-   column should center in what remains. */
 /* Starlight hugs the text to the TOC (auto 0); with no permanent right
    rail (hidden, or collapsed into a hover strip) the column centers in
    what remains. */
@@ -376,7 +412,7 @@ h4 {
 }
 
 h1 {
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .main-pane h2 {
@@ -598,6 +634,45 @@ figure.graph svg {
   figure.graph svg {
     width: var(--graph-natural-w, 100%);
     flex: none;
+  }
+}
+
+/* The renderer swaps each fence for an empty figure and fills it later, so
+   the content around it would move twice. Reserve the rendered height up
+   front. --gw and --gh on the wrapper are the rendered svg viewBox size. The
+   svg scales to the canvas width but never above its natural size; on phones
+   it keeps its natural size and scrolls. The pad values are the canvas
+   padding and borders. Inside an Expressive Code frame they also count the
+   figure margins and the frame border. */
+.graph-slot,
+.home-hero-graph {
+  container-type: inline-size;
+}
+.graph-slot > *,
+.home-hero-graph > * {
+  --graph-pad-w: calc(2.4rem + 4px);
+  --graph-pad-h: calc(6rem + 4px);
+  --graph-svg-h: min(var(--gh) * 1px, (100cqw - var(--graph-pad-w)) * var(--gh) / var(--gw));
+  box-sizing: border-box;
+  min-height: calc(var(--graph-svg-h) + var(--graph-pad-h));
+}
+.home-hero-graph > * {
+  --graph-pad-w: calc(2.4rem + 2px);
+  --graph-pad-h: calc(2.8rem + 2px);
+}
+/* Before the swap, clip the fence to the reserved height. */
+.graph-slot > .expressive-code:has(pre[data-language='mermaid']),
+.home-hero-graph > pre {
+  height: calc(var(--graph-svg-h) + var(--graph-pad-h));
+  overflow: hidden;
+}
+.home-hero-graph > pre {
+  margin: 0;
+}
+@media (max-width: 40rem) {
+  .graph-slot > *,
+  .home-hero-graph > * {
+    --graph-svg-h: calc(var(--gh) * 1px);
   }
 }
 
@@ -829,6 +904,10 @@ figure.graph .cluster rect {
     var(--sup-canvas);
   color: var(--sl-color-white);
   font-family: var(--sl-font);
+  color-scheme: dark;
+}
+[data-theme='light'] .home {
+  color-scheme: light;
 }
 
 .home a {
@@ -990,7 +1069,11 @@ figure.graph .cluster rect {
 .home-releases .rel-run a:hover,
 .home-releases .rel-run a:focus-visible {
   color: var(--sup-cyan);
-  outline: none;
+}
+
+.home-releases .rel-run a:focus-visible {
+  outline: 2px solid var(--sup-cyan);
+  outline-offset: 2px;
 }
 
 .home-releases .rel-line {
@@ -1070,7 +1153,7 @@ figure.graph .cluster rect {
   line-height: 1.08;
   margin: 0 0 1.1rem;
   letter-spacing: -0.025em;
-  font-weight: 650;
+  font-weight: 700;
   color: var(--sup-heading);
 }
 
@@ -2276,6 +2359,12 @@ figure.graph .cluster rect {
   .pg-graph {
     min-height: 420px;
   }
+  /* The page is server-rendered and the editor mounts on hydration. A fixed
+     height keeps the panes below from moving when it does; the editor
+     scrolls inside, as it does on wide screens. */
+  .pg-editor {
+    height: 32rem;
+  }
   .pg-resizer {
     display: none;
   }
@@ -2571,8 +2660,14 @@ button.pg-member.open {
   font-weight: 500;
   padding: 0.2rem 0.45rem;
   white-space: nowrap;
+}
+.pg-sort-btn {
+  all: unset;
   cursor: pointer;
-  user-select: none;
+}
+.pg-sort-btn:focus-visible {
+  outline: 2px solid var(--sup-cyan);
+  outline-offset: 2px;
 }
 .pg-task-table td {
   padding: 0.12rem 0.45rem;

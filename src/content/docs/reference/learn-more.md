@@ -1,11 +1,11 @@
 ---
-title: Learn more
+title: Further reading
 description: The Rust, async and embassy resources this site leans on, plus where the project lives.
 ---
 
 <p class="eyebrow">Reference</p>
 
-# Learn more
+# Further reading
 
 These docs stay focused on the supervision layer and link out for
 foundations. The pages below are the ones worth bookmarking.

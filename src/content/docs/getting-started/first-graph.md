@@ -13,6 +13,8 @@ producing. Around a hundred lines, and every idea generalizes.
 
 The finished graph:
 
+<div class="graph-slot" style="--gw: 264; --gh: 450">
+
 ```mermaid
 ---
 config:
@@ -34,6 +36,8 @@ flowchart TD
   r_SENSOR_EN --> n_SENSOR
   class r_SENSOR_EN resource;
 ```
+
+</div>
 
 ## 1. The workers
 
@@ -184,6 +188,8 @@ created a cycle, the const evaluation of `GRAPH` panics with a `dependency
 cycle` message; the path is not printed, so read it off the declaration.
 Nothing waits until the device boots to discover a malformed graph.
 
+<div class="graph-slot" style="--gw: 342.02; --gh: 563.2">
+
 ```mermaid
 flowchart TD
     accDescr: Bring-up of the two-node example
@@ -197,6 +203,8 @@ flowchart TD
     RDY -- yes --> U
     RDY -. "not within UPLOADER's slot_timeout<br/>then ReadyDepTimeout" .-> HOLD["start faults"]:::disabled
 ```
+
+</div>
 
 ## 5. Grow it: a resource
 

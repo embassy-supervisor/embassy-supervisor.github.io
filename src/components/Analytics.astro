@@ -3,11 +3,20 @@
 // published site: `astro dev` is not PROD, and a fork building for another
 // `site` fails the host check.
 //
-// Order is load-bearing, but for a different reason than the old iubenda
-// setup: the Consent Mode defaults have to be in the dataLayer before
-// gtag.js runs, or the first pageview is measured before the visitor has
-// chosen. Nothing here blocks scripts by rewriting tags — GA loads either
-// way and simply stays storage-less until `analytics_storage` is granted.
+// Order is load-bearing: the Consent Mode defaults have to be in the
+// dataLayer before gtag.js runs, or the first pageview is measured before
+// the visitor has chosen. Nothing here blocks scripts by rewriting tags: GA
+// loads either way and simply stays storage-less until `analytics_storage`
+// is granted.
+//
+// The consent library and its stylesheet stay off the render path. The
+// library is deferred. That keeps the order intact: the defaults are pushed
+// synchronously by the first inline script, and `CookieConsent` is only used
+// from `boot()`, which waits for DOMContentLoaded. Deferred scripts run
+// before that event. The stylesheet is only preloaded here. `boot()` applies
+// it, and the banner stays hidden until it has loaded, so it never shows
+// unstyled. `run` itself never waits for it: restoring a stored choice sends
+// the consent update, which has to land within `wait_for_update`.
 const SITE_HOST = 'embassy-supervisor.github.io';
 const enabled =
   import.meta.env.PROD && new URL(Astro.site ?? 'http://localhost').hostname === SITE_HOST;
@@ -21,7 +30,12 @@ const COOKIE_POLICY = '/cookies/';
 {
   enabled && (
     <>
-      <link rel="stylesheet" href="/vendor/cookieconsent.css" />
+      <link rel="preload" href="/vendor/cookieconsent.css" as="style" />
+      <style is:inline>
+        html:not(.cc-styled) #cc-main {
+          visibility: hidden;
+        }
+      </style>
 
       <script is:inline define:vars={{ GA_ID }}>
         window.dataLayer = window.dataLayer || [];
@@ -54,7 +68,7 @@ const COOKIE_POLICY = '/cookies/';
       </script>
       <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} />
 
-      <script is:inline src="/vendor/cookieconsent.umd.js" />
+      <script is:inline defer src="/vendor/cookieconsent.umd.js" />
       <script is:inline define:vars={{ COOKIE_POLICY }}>
         // The only signal this site can grant: there are no ad tags, so the
         // four ad_* parameters stay denied for everyone, permanently.
@@ -202,6 +216,10 @@ const COOKIE_POLICY = '/cookies/';
         }
 
         function start(country) {
+          // Blockers often stop the library. The page works without it, and
+          // the footer's preferences button just stays inert.
+          if (!window.CookieConsent) return;
+
           var mustAsk = country === null || PRIOR_CONSENT.indexOf(country) !== -1;
           consentConfig.autoShow = mustAsk;
 
@@ -222,7 +240,20 @@ const COOKIE_POLICY = '/cookies/';
         // above still had to be pushed synchronously, ahead of gtag.js.
         var country = lookupCountry();
 
+        // Reveals the banner once its styles apply (or failed to load: an
+        // unstyled banner still beats none).
+        function loadStyles() {
+          var link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = '/vendor/cookieconsent.css';
+          link.onload = link.onerror = function () {
+            document.documentElement.classList.add('cc-styled');
+          };
+          document.head.appendChild(link);
+        }
+
         function boot() {
+          loadStyles();
           country.then(start);
         }
 

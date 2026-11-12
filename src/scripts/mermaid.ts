@@ -69,7 +69,26 @@ const THEME_VARS: Record<Variant, Record<string, string>> = {
   },
 };
 
-const FONT = '"IBM Plex Mono", ui-monospace, monospace';
+const FONT = '"IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace';
+
+/** Dev only: the wrapper's --gw/--gh reserve the diagram's space before it
+ *  renders, and go stale when the diagram changes. Say so in the console. */
+function checkReservedSize(figure: HTMLElement, svg: SVGSVGElement) {
+  const slot = figure.closest<HTMLElement>('.graph-slot, .home-hero-graph');
+  if (!slot) {
+    console.warn('Diagram without a .graph-slot wrapper: its space is not reserved.', figure);
+    return;
+  }
+  const gw = Number.parseFloat(slot.style.getPropertyValue('--gw'));
+  const gh = Number.parseFloat(slot.style.getPropertyValue('--gh'));
+  const { width, height } = svg.viewBox.baseVal;
+  if (!(Math.abs(gw - width) <= 1 && Math.abs(gh - height) <= 1)) {
+    console.warn(
+      `Diagram size changed: set style="--gw: ${+width.toFixed(2)}; --gh: ${+height.toFixed(2)}" on its wrapper.`,
+      slot,
+    );
+  }
+}
 
 class Diagrams {
   private figures: Figure[] = [];
@@ -174,6 +193,7 @@ class Diagrams {
         f.svg = svgEl;
         this.animate(svgEl);
         this.wire(f);
+        if (import.meta.env.DEV) checkReservedSize(f.figure, svgEl);
       }
     } catch (err) {
       const message = String((err as Error)?.message ?? err)

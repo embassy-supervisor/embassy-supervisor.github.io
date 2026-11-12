@@ -15,6 +15,8 @@ heartbeats, readiness, tooling, and lint findings for one-sided signals.
 
 The layers stack; stop at any of them.
 
+<div class="graph-slot" style="--gw: 264; --gh: 538">
+
 ```mermaid
 flowchart TD
     accDescr: Dataflow layers from declared lists to derived tables
@@ -25,6 +27,8 @@ flowchart TD
 
     L1 --> L2 --> L3 --> L4
 ```
+
+</div>
 
 ## Declared lists
 
@@ -223,6 +227,8 @@ discovered readers, and resource slots with their providers. This is the
 graph of a small connected device, in the notation the
 [`supervisor-mermaid`](/guides/tools/) tool emits:
 
+<div class="graph-slot" style="--gw: 963.09; --gh: 540">
+
 ```mermaid
 ---
 config:
@@ -258,6 +264,8 @@ flowchart TD
     NET == provides ==> NET_STACK
     class USB_DEV,NET_STACK,LED,FLASH_DEV resource;
 ```
+
+</div>
 
 Dotted edges are relations that hold for an instant or are polled; solid
 edges carry data for the life of the run. The cycle through the signal boxes

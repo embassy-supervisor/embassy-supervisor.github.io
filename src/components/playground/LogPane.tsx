@@ -25,6 +25,12 @@ export default function LogPane({ logs, running }: Props) {
       </div>
       <div
         className="pg-log-host"
+        // Records stream in and old rows are trimmed, so a live log would
+        // announce nonstop. Keep the role, drop the announcements.
+        role="log"
+        aria-live="off"
+        aria-label="Application logs"
+        tabIndex={0}
         ref={hostRef}
         onScroll={() => {
           const el = hostRef.current;

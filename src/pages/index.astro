@@ -1,6 +1,7 @@
 ---
 import { Image } from 'astro:assets';
 import Analytics from '../components/Analytics.astro';
+import FontPreload from '../components/FontPreload.astro';
 import { consentEnabled } from '../lib/consent';
 import ThemeBootstrap from '../components/ThemeBootstrap.astro';
 import logo from '../assets/logo.svg';
@@ -120,10 +121,11 @@ const highlightedB = highlight(rustSourceB);
 <!doctype html>
 <html lang="en">
   <head>
-    <Analytics />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <ThemeBootstrap />
+    <FontPreload />
+    <Analytics />
     <meta name="description" content={description} />
     <title>embassy-supervisor: run-time supervision for async Rust firmware</title>
     <link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml" />
@@ -159,9 +161,10 @@ const highlightedB = highlight(rustSourceB);
         <a class="brand" href={`${base}`}>
           <Image
             src={logo}
-            alt="embassy-supervisor mark"
+            alt=""
             width={28}
             height={28}
+            loading="eager"
           />
           embassy-supervisor
         </a>
@@ -205,7 +208,7 @@ const highlightedB = highlight(rustSourceB);
         </aside>
           </div>
 
-          <div class="home-hero-graph">
+          <div class="home-hero-graph" style="--gw: 836.68; --gh: 1014">
             <pre data-language="mermaid"><code>---
 config:
   layout: elk

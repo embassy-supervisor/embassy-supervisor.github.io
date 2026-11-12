@@ -31,7 +31,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@xyflow/react": "^12.11.5",
-    "astro": "^7.4.2",
+    "astro": "^7.4.11",
     "codemirror": "^6.0.2",
     "mermaid": "^11.17.0",
     "react": "^19.2.8",

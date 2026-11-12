@@ -90,6 +90,8 @@ slot, a **state** wants `ready`. Both on one edge for one fact is redundant.
 the provider's readiness is withdrawn, the dependent is **stopped**, and it
 comes back when the provider is ready again.
 
+<div class="graph-slot" style="--gw: 686.81; --gh: 127.98">
+
 ```mermaid
 flowchart LR
     accDescr: A bound edge stops and restarts the dependent with the provider
@@ -100,6 +102,8 @@ flowchart LR
     P -. "clear_ready → stop cascade" .-> D
     P -. "ready again → re-gate + restart" .-> D
 ```
+
+</div>
 
 It is the one feature that changes a documented contract (a `clear_ready`
 that previously only deferred spawns), which is why it is per-edge opt-in.

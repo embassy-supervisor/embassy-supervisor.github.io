@@ -59,6 +59,7 @@ export default function EditorPane({ value, onChange, parse }: Props) {
             if (u.docChanged) onChange(u.state.doc.toString());
           }),
           EditorView.theme({}, { dark: false }),
+          EditorView.contentAttributes.of({ 'aria-label': 'Graph declaration (supervisor_graph! DSL)' }),
         ],
       }),
     });

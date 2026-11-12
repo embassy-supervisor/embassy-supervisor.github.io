@@ -16,6 +16,8 @@ and three cross-cutting flags cover everything.
 | `Pause` | spawned (or app-spawned) | acks, then parks on `wait_resume()` | **resumed in place**, keeps held resources |
 | `OnDemand` | not started | stopped if running | left down; the pool policy regrows it |
 
+<div class="graph-slot" style="--gw: 543.62; --gh: 309.76">
+
 ```mermaid
 stateDiagram-v2
     accDescr: The states a node moves through, and the transition that causes each
@@ -28,6 +30,8 @@ stateDiagram-v2
     Running --> Exited : body returns<br/>mark_exited
     Exited --> Running : Activate<br/>(control respawn)
 ```
+
+</div>
 
 Three flags cut across the modes:
 
