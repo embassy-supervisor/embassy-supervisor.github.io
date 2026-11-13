@@ -186,6 +186,13 @@ scaling. It logs a bring-up or <code>Activate</code> fault and reports it as
 the next <code>Activate</code>. <code>run()</code> returns only on a
 <code>ShutdownTimeout</code> or a <code>RestartStorm</code>.</dd>
 
+<dt>run_with / RunPolicy</dt>
+<dd><code>run()</code> with a policy that picks the faults it returns. The
+policy sees every fault the driver meets, with its node and its
+<code>Origin</code>. <code>ReturnOnHalt</code> is what <code>run()</code>
+uses. <code>FailFast</code> returns every fault. See
+<a href="/reference/errors/#escalation">Escalation</a>.</dd>
+
 <dt>ack</dt>
 <dd>The task-side half of a stop: <code>ack_dropped()</code> (or the
 combinator doing it). Missed after its window (2 s default, <code>ack_timeout:</code> per node):

@@ -87,7 +87,7 @@ own, in three tiers of verbs:
 
 | tier | verbs | notes |
 |---|---|---|
-| whole graph | `start`, `run`, `teardown`, `teardown_continue`, `respawn_terminate`, `resume_pausable` | `run` = best-effort `start` + drive pools/control; returns only on a missed shutdown ack or a refused restart |
+| whole graph | `start`, `run`, `run_with`, `teardown`, `teardown_continue`, `respawn_terminate`, `resume_pausable` | `run` = best-effort `start` + drive pools/control; returns only on a missed shutdown ack or a refused restart. `run_with` takes a `RunPolicy` that picks which faults it returns |
 | single node | `start_node`, `stop_node`, `resume_node` | no cascade |
 | subsystem | `activate`, `deactivate`, `apply_control`, `restart` | dependency cascades |
 

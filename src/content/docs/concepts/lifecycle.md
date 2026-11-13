@@ -172,6 +172,8 @@ produces no event; `has_exited()` is how to read it.
 the fault and reports it as `Faulted`. The node stays down and enabled, and
 `run` keeps driving. Those faults reach the app through a lifecycle
 consumer. `run` itself returns only `ShutdownTimeout` or `RestartStorm`.
+`run_with` takes a `RunPolicy` that picks other faults to return. See
+[Escalation](/reference/errors/#escalation).
 
 **The queue** (`lifecycle-events`): one consumer awaits the events.
 

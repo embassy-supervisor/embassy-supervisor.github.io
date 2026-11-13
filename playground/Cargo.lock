@@ -150,9 +150,9 @@ checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-supervisor"
-version = "0.14.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed675e7b6fc6d25eb9644a326a4912682ee1a663f883d2d17a04e5b2306d9b10"
+checksum = "8d09934077e2e279a08fc548a35d55d0db478f61cf1cfa7c1069e2373294352d"
 dependencies = [
  "embassy-executor",
  "embassy-futures",

@@ -45,7 +45,8 @@ arrives with the `defmt` feature.
 `run()` absorbs the four bring-up kinds: `ExecutorSlotEmpty`,
 `ResourceMissing`, `ReadyDepTimeout` and `Spawn`. It logs each one, reports
 it as a `Faulted` lifecycle event, and keeps driving. It returns only
-`ShutdownTimeout` and, with `restart-intensity`, `RestartStorm`.
+`ShutdownTimeout` and, with `restart-intensity`, `RestartStorm`. To return
+other faults, use `run_with` (see [Escalation](#escalation)).
 
 ## The other three
 
@@ -100,8 +101,9 @@ the graph cannot come up, nothing should run.
 
 `run()` does not return bring-up faults. It logs each one and reports it as
 a `Faulted` lifecycle event. The node stays down and enabled, and `run()`
-keeps driving. An app that wants the hard policy has two options:
+keeps driving. An app that wants the hard policy has three options:
 
+- call `run_with` with a policy that returns them (see below),
 - apply it in a lifecycle consumer, or
 - call `start()` first, escalate its result, then call `run()`.
 
@@ -116,3 +118,54 @@ What `run()` does return is the more interesting case:
 Re-entering `run()` after a return is safe. It retries every enabled node
 that is down. The library's contract ends at reporting the fault with
 provenance.
+
+### Choosing what the driver returns
+
+`run_with(&spawner, &mut policy)` is `run()` with a `RunPolicy` of your
+choice. The trait has one method:
+`returns(&mut self, fault: &NodeFault, origin: Origin) -> bool`.
+
+- `ReturnOnHalt` is what `run()` uses: a missed ack or a refused restart.
+- `FailFast` returns every fault, bring-up faults included.
+- Your own policy can look at the kind, the node and the `Origin`:
+  `Boot`, `Activate`, `Deactivate`, `Restart`, `Bind`, `PoolGrow` or
+  `PoolShrink`. `FaultKind::is_bring_up()` tells faults that leave a node
+  down from faults about a running node.
+
+The policy is called once for every fault the driver meets, in order. A
+fault it does not return is still logged and reported as `Faulted`.
+
+- A wave (the boot wave, an `Activate`, the way back up of a `Restart`)
+  runs to the end. `run_with` then returns the first fault the policy took.
+  The later faults of that wave still reach the policy.
+- A missed ack, a refused restart or a failed pool growth ends its step,
+  whatever the policy says.
+
+A policy is a value, so it can count faults or keep them for the caller to
+read after `run_with` returns:
+
+```rust
+struct ThreeStrikes {
+    bring_up_faults: u8,
+}
+
+impl RunPolicy for ThreeStrikes {
+    fn returns(&mut self, fault: &NodeFault, _origin: Origin) -> bool {
+        if !fault.kind.is_bring_up() {
+            return true;
+        }
+        self.bring_up_faults += 1;
+        self.bring_up_faults >= 3
+    }
+}
+
+let mut policy = ThreeStrikes { bring_up_faults: 0 };
+loop {
+    let fault = sup.run_with(&spawner, &mut policy).await;
+    escalate(fault).await;
+}
+```
+
+The policy runs inside the driver's waves, so it only observes. To act on a
+fault, send a command with `try_request_control`. The driver applies it
+after the wave.

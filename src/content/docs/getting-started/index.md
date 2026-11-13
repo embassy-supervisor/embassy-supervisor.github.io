@@ -96,6 +96,10 @@ flowchart LR
   gates a hardware-watchdog feed. Dataflow declarations make affected nodes
   explicit.
 
+- **Your fault policy.** The driver keeps running through faults it can
+  absorb. A `RunPolicy` passed to `run_with` decides which faults end it,
+  by kind, node or origin.
+
 - **Elastic scaling.** Pools grow under load and shrink after a cooldown,
   bounded by a `min:`/`max:` member budget declared in the graph.
 
